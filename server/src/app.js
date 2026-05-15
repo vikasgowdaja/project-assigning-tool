@@ -5,13 +5,18 @@ import { env } from './config/env.js'
 import teamRoutes from './routes/teamRoutes.js'
 import projectRoutes from './routes/projectRoutes.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
+import { createCorsOriginMatcher } from './utils/corsOrigin.js'
 
 export const createApp = () => {
   const app = express()
+  const originMatcher = createCorsOriginMatcher({
+    corsOrigin: env.corsOrigin,
+    nodeEnv: env.nodeEnv
+  })
 
   app.use(
     cors({
-      origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(','),
+      origin: originMatcher,
       credentials: true
     })
   )

@@ -1,6 +1,10 @@
 import { io } from 'socket.io-client'
 
 const getSocketBaseUrl = () => {
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    return window.location.origin
+  }
+
   if (import.meta.env.VITE_SOCKET_URL) {
     return import.meta.env.VITE_SOCKET_URL
   }
@@ -10,10 +14,10 @@ const getSocketBaseUrl = () => {
   }
 
   if (typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:5000`
+    return window.location.origin
   }
 
-  return 'http://localhost:5000'
+  return undefined
 }
 
 export const socket = io(getSocketBaseUrl(), {

@@ -1,15 +1,15 @@
 import axios from 'axios'
 
 const getApiBaseUrl = () => {
+  if (import.meta.env.DEV) {
+    return '/api'
+  }
+
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL
   }
 
-  if (typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:5000/api`
-  }
-
-  return 'http://localhost:5000/api'
+  return '/api'
 }
 
 export const api = axios.create({

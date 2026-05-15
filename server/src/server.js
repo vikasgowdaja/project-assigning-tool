@@ -7,6 +7,7 @@ import { env } from './config/env.js'
 import { setupSockets } from './sockets/index.js'
 import { ensureProjectPool } from './services/seedService.js'
 import { getLanIPv4Addresses } from './utils/network.js'
+import { createCorsOriginMatcher } from './utils/corsOrigin.js'
 
 const bootstrap = async () => {
   await connectDb()
@@ -14,9 +15,14 @@ const bootstrap = async () => {
 
   const app = createApp()
   const server = http.createServer(app)
+  const originMatcher = createCorsOriginMatcher({
+    corsOrigin: env.corsOrigin,
+    nodeEnv: env.nodeEnv
+  })
   const io = new Server(server, {
     cors: {
-      origin: env.corsOrigin === '*' ? true : env.corsOrigin.split(',')
+      origin: originMatcher,
+      credentials: true
     }
   })
 

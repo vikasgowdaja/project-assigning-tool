@@ -5,6 +5,8 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { RegistrationPage } from './pages/RegistrationPage'
 import { SuccessPage } from './pages/SuccessPage'
 import AdminTeamsPage from './pages/AdminTeamsPage'
+import { AdminLoginPage } from './pages/AdminLoginPage'
+import { ProtectedRoute } from './components/ProtectedRoute'
 
 function App() {
   return (
@@ -14,8 +16,16 @@ function App() {
       <Route path="/success" element={<SuccessPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/home" element={<Navigate to="/" replace />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route path="/admin" element={<Navigate to="/admin/teams" replace />} />
-      <Route path="/admin/teams" element={<AdminTeamsPage />} />
+      <Route
+        path="/admin/teams"
+        element={
+          <ProtectedRoute>
+            <AdminTeamsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

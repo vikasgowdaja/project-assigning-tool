@@ -1,54 +1,73 @@
 import { Project } from '../models/Project.js'
+import { Team } from '../models/Team.js'
 
 export const assignRandomProject = async (teamId) => {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const unassignedCount = await Project.countDocuments({ assigned: false })
-    const pipeline = unassignedCount > 0
-      ? [
-          { $match: { assigned: false } },
-          { $sample: { size: 1 } }
-        ]
-      : [{ $sample: { size: 1 } }]
+  const activeAssignedTitles = await Team.distinct('assignedProject.title', {
+    'assignedProject.title': { $exists: true, $ne: '' }
+  })
 
-    const [project] = await Project.aggregate(pipeline)
+  // Round 1: unique allocation from titles not currently used by active teams.
+  const uniquePipeline = activeAssignedTitles.length > 0
+    ? [
+        { $match: { title: { $nin: activeAssignedTitles } } },
+        { $sample: { size: 1 } }
+      ]
+    : [{ $sample: { size: 1 } }]
 
-    if (!project) {
-      return null
-    }
+  const [uniqueProject] = await Project.aggregate(uniquePipeline)
 
+  if (uniqueProject) {
     const assignedAt = new Date()
-    const updated = await Project.findOneAndUpdate(
-      { _id: project._id, assigned: false },
+    await Project.updateOne(
+      { _id: uniqueProject._id },
       {
         $set: {
           assigned: true,
           assignedTo: teamId,
           assignedAt
         }
-      },
-      { new: true }
+      }
     )
 
-    if (updated) {
-      return {
-        title: updated.title,
-        description: updated.description,
-        difficulty: updated.difficulty,
-        domain: updated.domain,
-        technologies: updated.technologies,
-        assignedAt
-      }
+    return {
+      title: uniqueProject.title,
+      description: uniqueProject.description,
+      difficulty: uniqueProject.difficulty,
+      domain: uniqueProject.domain,
+      technologies: uniqueProject.technologies,
+      assignedAt
     }
   }
 
-  return null
+  // Round 2+: pool exhausted, allow random reuse to keep assignment running.
+  const [reusedProject] = await Project.aggregate([{ $sample: { size: 1 } }])
+  if (!reusedProject) {
+    return null
+  }
+
+  return {
+    title: reusedProject.title,
+    description: reusedProject.description,
+    difficulty: reusedProject.difficulty,
+    domain: reusedProject.domain,
+    technologies: reusedProject.technologies,
+    assignedAt: new Date()
+  }
 }
 
 export const getProjectStats = async () => {
-  const [totalProjects, assignedProjects] = await Promise.all([
-    Project.countDocuments(),
-    Project.countDocuments({ assigned: true })
+  const [projects, activeAssignedTitles] = await Promise.all([
+    Project.find().select('title').lean(),
+    Team.distinct('assignedProject.title', {
+      'assignedProject.title': { $exists: true, $ne: '' }
+    })
   ])
+
+  const totalProjects = projects.length
+  const projectTitleSet = new Set(projects.map((project) => String(project.title).toLowerCase()))
+  const assignedProjects = activeAssignedTitles.reduce((count, title) => {
+    return projectTitleSet.has(String(title).toLowerCase()) ? count + 1 : count
+  }, 0)
 
   return {
     totalProjects,

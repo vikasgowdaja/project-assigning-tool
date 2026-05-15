@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { deleteTeam, getProjects, getTeams, updateTeam } from '../services/api'
 import AdminEditTeamModal from '../components/AdminEditTeamModal'
+import { AdminProjectsManager } from '../components/AdminProjectsManager'
 import { PageShell } from '../components/PageShell'
 
 const AdminTeamsPage = () => {
@@ -32,6 +33,10 @@ const AdminTeamsPage = () => {
     } catch {
       setError('Failed to fetch projects')
     }
+  }
+
+  const refreshAdminData = async () => {
+    await Promise.all([fetchTeams({ showLoader: true }), fetchProjects()])
   }
 
   useEffect(() => {
@@ -116,6 +121,8 @@ const AdminTeamsPage = () => {
             {error}
           </div>
         )}
+
+        <AdminProjectsManager onProjectsChanged={refreshAdminData} />
 
         {loading ? (
           <div className="mt-6 rounded-xl border border-white/20 bg-black/20 px-4 py-5 text-cyan-100">

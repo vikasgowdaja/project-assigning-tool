@@ -3,6 +3,7 @@ import { MemberFields } from './MemberFields'
 
 export default function AdminEditTeamModal({ team, projects, onSave, onCancel }) {
   const [form, setForm] = useState({
+    teamNumber: team.teamNumber || '',
     teamName: team.teamName || '',
     leadName: team.leadName || '',
     leadEmail: team.leadEmail || '',
@@ -47,6 +48,7 @@ export default function AdminEditTeamModal({ team, projects, onSave, onCancel })
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             {[
+              ['teamNumber', 'Team Number'],
               ['teamName', 'Team Name'],
               ['leadName', 'Team Lead Name'],
               ['leadEmail', 'Team Lead Email'],
@@ -63,7 +65,7 @@ export default function AdminEditTeamModal({ team, projects, onSave, onCancel })
                   required
                   type={key.includes('Email') ? 'email' : 'text'}
                   autoComplete={key === 'leadEmail' ? 'email' : 'off'}
-                  autoCapitalize={key === 'leadUsn' ? 'characters' : 'none'}
+                  autoCapitalize={key === 'leadUsn' || key === 'teamNumber' ? 'characters' : 'none'}
                   value={form[key]}
                   onChange={e => updateField(key, e.target.value)}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30"

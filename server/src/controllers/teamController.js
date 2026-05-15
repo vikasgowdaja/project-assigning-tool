@@ -27,14 +27,20 @@ export const deleteTeam = asyncHandler(async (req, res) => {
   const team = await Team.findById(req.params.id)
   if (!team) throw new ApiError(404, 'Team not found')
 
-  if (team.assignedProject?.title) {
-    await Project.updateOne(
-      { title: team.assignedProject.title },
-      { $set: { assigned: false, assignedTo: null, assignedAt: null } }
-    )
-  }
+  const currentTitle = String(team.assignedProject?.title || '').trim()
 
   await team.deleteOne()
+
+  if (currentTitle) {
+    const stillUsedByOtherTeam = await Team.exists({ 'assignedProject.title': currentTitle })
+    if (!stillUsedByOtherTeam) {
+      await Project.updateOne(
+        { title: currentTitle },
+        { $set: { assigned: false, assignedTo: null, assignedAt: null } }
+      )
+    }
+  }
+
   res.json({ message: 'Team deleted' })
 })
 
@@ -43,30 +49,101 @@ export const updateTeam = asyncHandler(async (req, res) => {
   const team = await Team.findById(req.params.id)
   if (!team) throw new ApiError(404, 'Team not found')
 
-  const updatableFields = [
-    'teamName',
+  if (req.body.teamNumber !== undefined) {
+    const normalizedTeamNumber = String(req.body.teamNumber || '').trim().toUpperCase()
+    if (!/^TEAM-\d{3,}$/.test(normalizedTeamNumber)) {
+      throw new ApiError(400, 'Team number format must be like TEAM-001')
+    }
+
+    const existingTeamNumber = await Team.findOne({
+      _id: { $ne: team._id },
+      teamNumber: normalizedTeamNumber
+    })
+
+    if (existingTeamNumber) {
+      throw new ApiError(409, 'Team number is already in use')
+    }
+
+    team.teamNumber = normalizedTeamNumber
+  }
+
+  if (req.body.teamName !== undefined) {
+    const normalizedTeamName = String(req.body.teamName || '').trim()
+    if (!normalizedTeamName) {
+      throw new ApiError(400, 'Team name is required')
+    }
+
+    const safeTeamName = escapeRegex(normalizedTeamName)
+    const existingTeamName = await Team.findOne({
+      _id: { $ne: team._id },
+      teamName: { $regex: new RegExp(`^${safeTeamName}$`, 'i') }
+    })
+
+    if (existingTeamName) {
+      throw new ApiError(409, 'Team name is already in use')
+    }
+
+    team.teamName = normalizedTeamName
+  }
+
+  if (req.body.leadEmail !== undefined) {
+    const normalizedLeadEmail = String(req.body.leadEmail || '').trim().toLowerCase()
+    if (!isEmail(normalizedLeadEmail)) {
+      throw new ApiError(400, 'Invalid lead email')
+    }
+
+    const existingLeadEmail = await Team.findOne({
+      _id: { $ne: team._id },
+      leadEmail: normalizedLeadEmail
+    })
+
+    if (existingLeadEmail) {
+      throw new ApiError(409, 'Lead email is already in use')
+    }
+
+    team.leadEmail = normalizedLeadEmail
+  }
+
+  if (req.body.leadUsn !== undefined) {
+    const normalizedLeadUsn = String(req.body.leadUsn || '').trim().toUpperCase()
+    if (!normalizedLeadUsn) {
+      throw new ApiError(400, 'Lead USN is required')
+    }
+
+    const existingLeadUsn = await Team.findOne({
+      _id: { $ne: team._id },
+      leadUsn: normalizedLeadUsn
+    })
+
+    if (existingLeadUsn) {
+      throw new ApiError(409, 'Lead USN is already in use')
+    }
+
+    team.leadUsn = normalizedLeadUsn
+  }
+
+  const simpleUpdatableFields = [
     'leadName',
-    'leadEmail',
-    'leadUsn',
     'leadPhone',
     'college',
     'department'
   ]
 
-  updatableFields.forEach((field) => {
+  simpleUpdatableFields.forEach((field) => {
     if (req.body[field] === undefined) return
+    if (field === 'leadPhone') {
+      const value = String(req.body[field] || '').trim()
+      if (!isPhone(value)) {
+        throw new ApiError(400, 'Invalid lead phone number')
+      }
+      team[field] = value
+      return
+    }
+
     const value = String(req.body[field]).trim()
-
-    if (field === 'leadEmail') {
-      team[field] = value.toLowerCase()
-      return
+    if (!value) {
+      throw new ApiError(400, `${field} is required`)
     }
-
-    if (field === 'leadUsn') {
-      team[field] = value.toUpperCase()
-      return
-    }
-
     team[field] = value
   })
 
@@ -91,22 +168,27 @@ export const updateTeam = asyncHandler(async (req, res) => {
         throw new ApiError(404, 'Selected project not found')
       }
 
-      if (nextProject.assigned && String(nextProject.assignedTo) !== String(team._id)) {
-        throw new ApiError(409, 'Selected project is already assigned to another team')
-      }
-
       if (currentTitle) {
-        await Project.updateOne(
-          { title: currentTitle },
-          { $set: { assigned: false, assignedTo: null, assignedAt: null } }
-        )
+        const sameTitleTeamCount = await Team.countDocuments({
+          _id: { $ne: team._id },
+          'assignedProject.title': currentTitle
+        })
+
+        if (sameTitleTeamCount === 0) {
+          await Project.updateOne(
+            { title: currentTitle },
+            { $set: { assigned: false, assignedTo: null, assignedAt: null } }
+          )
+        }
       }
 
       const assignedAt = new Date()
-      await Project.updateOne(
-        { _id: nextProject._id },
-        { $set: { assigned: true, assignedTo: team._id, assignedAt } }
-      )
+      if (!nextProject.assigned || String(nextProject.assignedTo || '') === String(team._id)) {
+        await Project.updateOne(
+          { _id: nextProject._id },
+          { $set: { assigned: true, assignedTo: team._id, assignedAt } }
+        )
+      }
 
       team.assignedProject = {
         title: nextProject.title,
@@ -121,6 +203,56 @@ export const updateTeam = asyncHandler(async (req, res) => {
 
   await team.save()
   res.json(team)
+})
+
+// ADMIN: Reconcile project assignment flags based on current teams
+export const reconcileProjectAssignments = asyncHandler(async (req, res) => {
+  const teams = await Team.find().lean()
+  const activeTitles = new Set(
+    teams
+      .map((team) => String(team.assignedProject?.title || '').trim())
+      .filter(Boolean)
+  )
+
+  await Project.updateMany(
+    { title: { $nin: Array.from(activeTitles) } },
+    { $set: { assigned: false, assignedTo: null, assignedAt: null } }
+  )
+
+  const projects = await Project.find({ title: { $in: Array.from(activeTitles) } })
+  const projectByTitle = new Map(projects.map((project) => [project.title, project]))
+
+  for (const team of teams) {
+    const title = String(team.assignedProject?.title || '').trim()
+    if (!title) {
+      continue
+    }
+
+    const project = projectByTitle.get(title)
+    if (!project) {
+      continue
+    }
+
+    if (!project.assigned) {
+      project.assigned = true
+      project.assignedTo = team._id
+      project.assignedAt = team.assignedAt || team.updatedAt || new Date()
+      await project.save()
+    }
+  }
+
+  const [projectStats, totalTeams] = await Promise.all([
+    getProjectStats(),
+    Team.countDocuments()
+  ])
+
+  res.json({
+    message: 'Project assignments reconciled successfully',
+    stats: {
+      ...projectStats,
+      totalTeams
+    }
+  })
 })
 
 export const registerTeam = asyncHandler(async (req, res) => {

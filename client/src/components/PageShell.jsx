@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router-dom'
+import { clearAdminToken, getAdminToken } from '../services/api'
 
 const navClassName = ({ isActive }) =>
   `rounded-full px-4 py-2 text-sm font-semibold transition ${
@@ -8,6 +9,13 @@ const navClassName = ({ isActive }) =>
   }`
 
 export function PageShell({ children }) {
+  const isAdminLoggedIn = Boolean(getAdminToken())
+
+  const onLogout = () => {
+    clearAdminToken()
+    window.location.assign('/admin/login')
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#0ea5e9_0%,_#0369a1_40%,_#0f172a_80%)] pb-12 text-slate-100">
       <header className="border-b border-white/20 bg-black/20 backdrop-blur-xl">
@@ -22,9 +30,18 @@ export function PageShell({ children }) {
             <NavLink to="/dashboard" className={navClassName}>
               Dashboard
             </NavLink>
-            <NavLink to="/admin/teams" className={navClassName}>
+            <NavLink to={isAdminLoggedIn ? '/admin/teams' : '/admin/login'} className={navClassName}>
               Admin
             </NavLink>
+            {isAdminLoggedIn && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-400"
+              >
+                Logout
+              </button>
+            )}
           </nav>
         </div>
       </header>

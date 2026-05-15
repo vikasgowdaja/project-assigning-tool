@@ -4,6 +4,7 @@ import morgan from 'morgan'
 import { env } from './config/env.js'
 import teamRoutes from './routes/teamRoutes.js'
 import projectRoutes from './routes/projectRoutes.js'
+import authRoutes from './routes/authRoutes.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 import { createCorsOriginMatcher } from './utils/corsOrigin.js'
 
@@ -35,6 +36,7 @@ export const createApp = () => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
   })
 
+  app.use('/api/auth', authRoutes)
   app.use('/api/teams', teamRoutes)
   app.use('/api/projects', projectRoutes)
 

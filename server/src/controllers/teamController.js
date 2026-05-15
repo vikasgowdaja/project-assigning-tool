@@ -22,6 +22,107 @@ const normalizeMembers = (members = []) => {
 
 const toPlainTeam = (team) => (team.toObject ? team.toObject() : team)
 
+// ADMIN: Delete a team and return project to pool
+export const deleteTeam = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.params.id)
+  if (!team) throw new ApiError(404, 'Team not found')
+
+  if (team.assignedProject?.title) {
+    await Project.updateOne(
+      { title: team.assignedProject.title },
+      { $set: { assigned: false, assignedTo: null, assignedAt: null } }
+    )
+  }
+
+  await team.deleteOne()
+  res.json({ message: 'Team deleted' })
+})
+
+// ADMIN: Update team details, including reassignment of project by title
+export const updateTeam = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.params.id)
+  if (!team) throw new ApiError(404, 'Team not found')
+
+  const updatableFields = [
+    'teamName',
+    'leadName',
+    'leadEmail',
+    'leadUsn',
+    'leadPhone',
+    'college',
+    'department'
+  ]
+
+  updatableFields.forEach((field) => {
+    if (req.body[field] === undefined) return
+    const value = String(req.body[field]).trim()
+
+    if (field === 'leadEmail') {
+      team[field] = value.toLowerCase()
+      return
+    }
+
+    if (field === 'leadUsn') {
+      team[field] = value.toUpperCase()
+      return
+    }
+
+    team[field] = value
+  })
+
+  if (req.body.members !== undefined) {
+    const normalizedMembers = normalizeMembers(req.body.members)
+    if (normalizedMembers.length < 2 || normalizedMembers.length > 6) {
+      throw new ApiError(400, 'Team members must be between 2 and 6')
+    }
+    team.members = normalizedMembers
+  }
+
+  if (req.body.projectTitle !== undefined) {
+    const requestedTitle = String(req.body.projectTitle || '').trim()
+    if (!requestedTitle) {
+      throw new ApiError(400, 'Project title is required')
+    }
+
+    const currentTitle = team.assignedProject?.title || ''
+    if (requestedTitle !== currentTitle) {
+      const nextProject = await Project.findOne({ title: requestedTitle })
+      if (!nextProject) {
+        throw new ApiError(404, 'Selected project not found')
+      }
+
+      if (nextProject.assigned && String(nextProject.assignedTo) !== String(team._id)) {
+        throw new ApiError(409, 'Selected project is already assigned to another team')
+      }
+
+      if (currentTitle) {
+        await Project.updateOne(
+          { title: currentTitle },
+          { $set: { assigned: false, assignedTo: null, assignedAt: null } }
+        )
+      }
+
+      const assignedAt = new Date()
+      await Project.updateOne(
+        { _id: nextProject._id },
+        { $set: { assigned: true, assignedTo: team._id, assignedAt } }
+      )
+
+      team.assignedProject = {
+        title: nextProject.title,
+        description: nextProject.description,
+        difficulty: nextProject.difficulty,
+        domain: nextProject.domain,
+        technologies: nextProject.technologies
+      }
+      team.assignedAt = assignedAt
+    }
+  }
+
+  await team.save()
+  res.json(team)
+})
+
 export const registerTeam = asyncHandler(async (req, res) => {
   const {
     teamName,

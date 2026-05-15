@@ -32,6 +32,23 @@ export const getStats = async () => {
   return data
 }
 
+export const getProjects = async () => {
+  const { data } = await api.get('/projects')
+  return data
+}
+
+// Admin: Delete a team
+export const deleteTeam = async (id) => {
+  const { data } = await api.delete(`/teams/${id}`)
+  return data
+}
+
+// Admin: Update a team
+export const updateTeam = async (id, payload) => {
+  const { data } = await api.patch(`/teams/${id}`, payload)
+  return data
+}
+
 export const downloadTeamsExcel = async () => {
   const response = await api.get('/teams/export', {
     responseType: 'blob'

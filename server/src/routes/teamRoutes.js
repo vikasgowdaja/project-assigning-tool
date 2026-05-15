@@ -3,10 +3,17 @@ import {
   exportTeamsExcel,
   getDashboardStats,
   getTeams,
-  registerTeam
+  registerTeam,
+  deleteTeam,
+  updateTeam
 } from '../controllers/teamController.js'
 
 const router = Router()
+
+
+// Admin CRUD
+router.delete('/:id', deleteTeam)
+router.patch('/:id', updateTeam)
 
 router.post('/register', registerTeam)
 router.get('/export', exportTeamsExcel)

@@ -22,6 +22,9 @@ export function PageShell({ children }) {
             <NavLink to="/dashboard" className={navClassName}>
               Dashboard
             </NavLink>
+            <NavLink to="/admin/teams" className={navClassName}>
+              Admin
+            </NavLink>
           </nav>
         </div>
       </header>

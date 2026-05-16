@@ -1,6 +1,8 @@
 import axios from 'axios'
 
 const ADMIN_TOKEN_KEY = 'admin_auth_token'
+const TEAM_TOKEN_KEY = 'team_auth_token'
+const TEAM_PROFILE_KEY = 'team_auth_profile'
 
 const getApiBaseUrl = () => {
   if (import.meta.env.DEV) {
@@ -43,6 +45,54 @@ export const clearAdminToken = () => {
   localStorage.removeItem(ADMIN_TOKEN_KEY)
 }
 
+export const getTeamToken = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  return localStorage.getItem(TEAM_TOKEN_KEY) || ''
+}
+
+export const getTeamProfile = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const raw = localStorage.getItem(TEAM_PROFILE_KEY)
+  if (!raw) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export const setTeamSession = ({ token, team }) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (token) {
+    localStorage.setItem(TEAM_TOKEN_KEY, token)
+  }
+
+  if (team) {
+    localStorage.setItem(TEAM_PROFILE_KEY, JSON.stringify(team))
+  }
+}
+
+export const clearTeamSession = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  localStorage.removeItem(TEAM_TOKEN_KEY)
+  localStorage.removeItem(TEAM_PROFILE_KEY)
+}
+
 api.interceptors.request.use((config) => {
   const token = getAdminToken()
   if (token) {
@@ -71,6 +121,110 @@ export const loginAdmin = async (payload) => {
   if (data?.token) {
     setAdminToken(data.token)
   }
+  return data
+}
+
+export const loginTeam = async (payload) => {
+  const { data } = await api.post('/auth/team/login', payload)
+  if (data?.token && data?.team) {
+    setTeamSession({ token: data.token, team: data.team })
+  }
+  return data
+}
+
+export const changeTeamPassword = async (payload, token) => {
+  const activeToken = token || getTeamToken()
+  const { data } = await api.post('/auth/team/change-password', payload, {
+    headers: {
+      Authorization: `Bearer ${activeToken}`
+    }
+  })
+
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+
+  return data
+}
+
+export const requestTeamPasswordResetOtp = async (payload) => {
+  const { data } = await api.post('/auth/team/password-reset/request-otp', payload)
+  return data
+}
+
+export const verifyTeamPasswordResetOtp = async (payload) => {
+  const { data } = await api.post('/auth/team/password-reset/verify-otp', payload)
+  return data
+}
+
+export const resetTeamPassword = async (payload) => {
+  const { data } = await api.post('/auth/team/password-reset/reset', payload)
+  clearTeamSession()
+  return data
+}
+
+export const getTeamMe = async (token) => {
+  const activeToken = token || getTeamToken()
+  const { data } = await api.get('/auth/team/me', {
+    headers: {
+      Authorization: `Bearer ${activeToken}`
+    }
+  })
+
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+
+  return data
+}
+
+export const getTeamPasswordActivity = async () => {
+  const { data } = await api.get('/auth/admin/team-passwords/activity')
+  return data
+}
+
+export const forceResetTeamPassword = async (teamId) => {
+  const { data } = await api.post(`/auth/admin/team-passwords/${teamId}/force-reset`)
+  return data
+}
+
+export const submitTeamProfileUpdateRequest = async (payload, token) => {
+  const activeToken = token || getTeamToken()
+  const { data } = await api.post('/teams/team/update-request', payload, {
+    headers: {
+      Authorization: `Bearer ${activeToken}`
+    }
+  })
+
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+
+  return data
+}
+
+export const recallTeamProfileUpdateRequest = async (token) => {
+  const activeToken = token || getTeamToken()
+  const { data } = await api.post('/teams/team/update-request/recall', null, {
+    headers: {
+      Authorization: `Bearer ${activeToken}`
+    }
+  })
+
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+
+  return data
+}
+
+export const reviewTeamProfileUpdateRequest = async (teamId, payload) => {
+  const { data } = await api.post(`/teams/admin/${teamId}/update-request/review`, payload)
+  return data
+}
+
+export const reviewTeamCustomProjectIdea = async (teamId, payload) => {
+  const { data } = await api.post(`/teams/admin/${teamId}/custom-idea/review`, payload)
   return data
 }
 

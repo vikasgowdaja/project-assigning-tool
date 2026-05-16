@@ -7,12 +7,24 @@ import { SuccessPage } from './pages/SuccessPage'
 import AdminTeamsPage from './pages/AdminTeamsPage'
 import { AdminLoginPage } from './pages/AdminLoginPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { TeamLoginPage } from './pages/TeamLoginPage'
+import { TeamDashboardPage } from './pages/TeamDashboardPage'
+import { TeamProtectedRoute } from './components/TeamProtectedRoute'
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/register" element={<RegistrationPage />} />
+      <Route path="/login" element={<TeamLoginPage />} />
+      <Route
+        path="/team/dashboard"
+        element={
+          <TeamProtectedRoute>
+            <TeamDashboardPage />
+          </TeamProtectedRoute>
+        }
+      />
       <Route path="/success" element={<SuccessPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/home" element={<Navigate to="/" replace />} />

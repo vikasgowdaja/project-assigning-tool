@@ -6,12 +6,14 @@ import { connectDb } from './config/db.js'
 import { env } from './config/env.js'
 import { setupSockets } from './sockets/index.js'
 import { ensureProjectPool } from './services/seedService.js'
+import { ensureTeamCredentials } from './services/teamAuthService.js'
 import { getLanIPv4Addresses } from './utils/network.js'
 import { createCorsOriginMatcher } from './utils/corsOrigin.js'
 
 const bootstrap = async () => {
   await connectDb()
   await ensureProjectPool()
+  await ensureTeamCredentials()
 
   const app = createApp()
   const server = http.createServer(app)

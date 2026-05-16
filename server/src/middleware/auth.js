@@ -39,3 +39,29 @@ export const requireAdminAuth = (req, res, next) => {
     next(new ApiError(error.statusCode || 401, 'Invalid or expired token'))
   }
 }
+
+export const requireTeamAuth = (req, res, next) => {
+  const token = extractBearerToken(req.headers.authorization)
+
+  if (!token) {
+    next(new ApiError(401, 'Authentication required'))
+    return
+  }
+
+  try {
+    const payload = jwt.verify(token, env.jwtSecret)
+    if (payload.role !== 'team' || !payload.teamId) {
+      throw new ApiError(403, 'Team access required')
+    }
+
+    req.team = {
+      teamId: payload.teamId,
+      teamName: payload.teamName,
+      role: payload.role
+    }
+
+    next()
+  } catch (error) {
+    next(new ApiError(error.statusCode || 401, 'Invalid or expired token'))
+  }
+}

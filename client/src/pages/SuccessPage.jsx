@@ -5,6 +5,8 @@ import { formatDateTime } from '../utils/date'
 export function SuccessPage() {
   const location = useLocation()
   const team = location.state?.team
+  const hasAssignedProject = Boolean(team?.assignedProject?.title)
+  const hasCustomIdea = Boolean(team?.customProjectIdea?.title)
 
   if (!team) {
     return <Navigate to="/register" replace />
@@ -22,16 +24,41 @@ export function SuccessPage() {
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-white/30 bg-white/10 p-5">
-            <p className="text-xs uppercase tracking-widest text-cyan-100">Assigned Project</p>
-            <h2 className="mt-2 text-2xl font-black text-white">
-              {team.assignedProject.title}
-            </h2>
-            <p className="mt-2 text-sm text-cyan-50/90">
-              {team.assignedProject.description}
-            </p>
-            <p className="mt-3 text-xs text-cyan-100/90">
-              {team.assignedProject.domain} | {team.assignedProject.difficulty}
-            </p>
+            {hasAssignedProject ? (
+              <>
+                <p className="text-xs uppercase tracking-widest text-cyan-100">Assigned Project</p>
+                <h2 className="mt-2 text-2xl font-black text-white">
+                  {team.assignedProject.title}
+                </h2>
+                <p className="mt-2 text-sm text-cyan-50/90">
+                  {team.assignedProject.description}
+                </p>
+                <p className="mt-3 text-xs text-cyan-100/90">
+                  {team.assignedProject.domain} | {team.assignedProject.difficulty}
+                </p>
+              </>
+            ) : hasCustomIdea ? (
+              <>
+                <p className="text-xs uppercase tracking-widest text-cyan-100">Project Idea Submitted</p>
+                <h2 className="mt-2 text-2xl font-black text-white">
+                  {team.customProjectIdea.title}
+                </h2>
+                <p className="mt-2 text-sm text-cyan-50/90">
+                  {team.customProjectIdea.description}
+                </p>
+                <p className="mt-3 text-xs text-cyan-100/90">
+                  {team.customProjectIdea.domain} | {team.customProjectIdea.difficulty}
+                </p>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-amber-100">
+                  Approval Status: {team.customProjectIdea.status || 'pending'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs uppercase tracking-widest text-cyan-100">Project Status</p>
+                <h2 className="mt-2 text-2xl font-black text-white">Pending</h2>
+              </>
+            )}
           </div>
 
           <div className="rounded-2xl border border-white/30 bg-white/10 p-5">
@@ -43,7 +70,7 @@ export function SuccessPage() {
               <li>College: {team.college}</li>
               <li>Department: {team.department}</li>
               <li>Members: {team.members.length}</li>
-              <li>Assigned At: {formatDateTime(team.assignedAt)}</li>
+              <li>{hasAssignedProject ? 'Assigned At' : 'Submitted At'}: {formatDateTime(hasAssignedProject ? team.assignedAt : team.customProjectIdea?.submittedAt)}</li>
             </ul>
             <div className="mt-4 rounded-xl border border-white/15 bg-black/15 p-3 text-xs text-cyan-50/90">
               <p className="font-semibold uppercase tracking-widest text-cyan-100">

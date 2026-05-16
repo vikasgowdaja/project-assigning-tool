@@ -32,7 +32,11 @@ export function TeamsTable({ teams }) {
                 <td className="px-4 py-3">{team.leadName}</td>
                 <td className="px-4 py-3">{team.leadUsn}</td>
                 <td className="px-4 py-3">{team.college}</td>
-                <td className="px-4 py-3">{team.assignedProject?.title || '-'}</td>
+                <td className="px-4 py-3">
+                  {team.assignedProject?.title || (team.customProjectIdea?.title
+                    ? `${team.customProjectIdea.title} (Pending Approval)`
+                    : '-')}
+                </td>
                 <td className="px-4 py-3">{formatDateTime(team.createdAt)}</td>
               </tr>
             ))}

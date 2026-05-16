@@ -24,6 +24,12 @@ export function LandingPage() {
             Start Team Registration
           </Link>
           <Link
+            to="/login"
+            className="rounded-xl border border-cyan-300/60 bg-cyan-200/15 px-6 py-3 text-sm font-black text-cyan-50 transition hover:bg-cyan-200/25"
+          >
+            Team Login
+          </Link>
+          <Link
             to="/dashboard"
             className="rounded-xl border border-white/40 bg-white/10 px-6 py-3 text-sm font-black text-white transition hover:bg-white/20"
           >

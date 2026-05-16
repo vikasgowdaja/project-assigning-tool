@@ -7,6 +7,28 @@ import { PDFParse } from 'pdf-parse'
 
 const allowedDifficulties = new Set(['easy', 'medium', 'hard'])
 
+const normalizeHeader = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+const resolveHeaderKey = (rawHeader) => {
+  const header = normalizeHeader(rawHeader)
+  if (!header) return null
+
+  if (['title', 'projecttitle', 'projectname', 'name'].includes(header)) return 'title'
+  if (['description', 'desc', 'projectdescription'].includes(header)) return 'description'
+  if (['difficulty', 'level', 'difficultylevel'].includes(header)) return 'difficulty'
+  if (['domain', 'category', 'problemdomain'].includes(header)) return 'domain'
+  if (['technologies', 'technology', 'tech', 'techstack', 'stack'].includes(header)) {
+    return 'technologies'
+  }
+
+  return null
+}
+
 const normalizeTechnologies = (technologies = []) => {
   if (!Array.isArray(technologies)) {
     return []
@@ -79,7 +101,7 @@ const normalizeRecord = (record = {}) => {
 const insertUniqueProjects = async (rawRecords = []) => {
   const normalized = rawRecords.map(normalizeRecord).filter(Boolean)
   if (normalized.length === 0) {
-    throw new ApiError(400, 'No valid project rows found in upload')
+    return { insertedCount: 0, skippedCount: 0, projects: [] }
   }
 
   const existingProjects = await Project.find().select('title').lean()
@@ -170,7 +192,10 @@ const buildUploadPreview = async (rawRecords = []) => {
     }
 
     seenIncoming.add(key)
-    validRows.push(candidate)
+    validRows.push({
+      rowNumber,
+      project: candidate
+    })
   })
 
   return {
@@ -195,16 +220,16 @@ const parseExcelBuffer = async (buffer) => {
   const headerRow = worksheet.getRow(1)
   const headers = headerRow.values
     .slice(1)
-    .map((header) => String(header || '').trim().toLowerCase())
+    .map((header) => String(header || '').trim())
 
-  const keyByIndex = headers.map((header) => {
-    if (header.includes('title')) return 'title'
-    if (header.includes('description')) return 'description'
-    if (header.includes('difficulty')) return 'difficulty'
-    if (header.includes('domain')) return 'domain'
-    if (header.includes('tech')) return 'technologies'
-    return null
-  })
+  const keyByIndex = headers.map(resolveHeaderKey)
+
+  if (!keyByIndex.includes('title')) {
+    throw new ApiError(
+      400,
+      'Excel headers are invalid. Include at least a title column (for example: title, project title).'
+    )
+  }
 
   worksheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return
@@ -216,6 +241,12 @@ const parseExcelBuffer = async (buffer) => {
       if (!key) return
       record[key] = typeof value === 'object' && value?.text ? value.text : String(value || '').trim()
     })
+
+    const isRowEmpty = Object.values(record).every((value) => !String(value || '').trim())
+    if (isRowEmpty) {
+      return
+    }
+
     rows.push(record)
   })
 
@@ -287,13 +318,38 @@ export const createProject = asyncHandler(async (req, res) => {
 export const bulkUploadProjects = asyncHandler(async (req, res) => {
   const records = await parseUploadFile(req.file)
   const preview = await buildUploadPreview(records)
-  const result = await insertUniqueProjects(preview.validRows)
+
+  if (preview.validCount === 0) {
+    res.status(400).json({
+      message: 'No valid rows found in upload. Please correct errors and try again.',
+      totalRows: preview.totalRows,
+      validCount: preview.validCount,
+      invalidCount: preview.invalidCount,
+      invalidRows: preview.invalidRows.slice(0, 100)
+    })
+    return
+  }
+
+  const result = await insertUniqueProjects(preview.validRows.map((row) => row.project))
+  const sourceRowByTitle = new Map(
+    preview.validRows.map((row) => [String(row.project.title || '').toLowerCase(), row.rowNumber])
+  )
+  const loadedProjects = (result.projects || []).map((project) => ({
+    rowNumber: sourceRowByTitle.get(String(project.title || '').toLowerCase()) || null,
+    title: project.title,
+    description: project.description,
+    difficulty: project.difficulty,
+    domain: project.domain,
+    technologies: project.technologies || []
+  }))
 
   res.status(201).json({
     message: 'Project upload processed successfully',
     totalRows: preview.totalRows,
+    validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     invalidRows: preview.invalidRows.slice(0, 50),
+    loadedProjects,
     ...result
   })
 })
@@ -308,7 +364,10 @@ export const previewProjectsUpload = asyncHandler(async (req, res) => {
     validCount: preview.validCount,
     invalidCount: preview.invalidCount,
     invalidRows: preview.invalidRows.slice(0, 100),
-    sampleValidRows: preview.validRows.slice(0, 10)
+    validRows: preview.validRows.slice(0, 200).map((row) => ({
+      rowNumber: row.rowNumber,
+      ...row.project
+    }))
   })
 })
 

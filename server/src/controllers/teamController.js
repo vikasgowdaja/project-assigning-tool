@@ -1,10 +1,129 @@
+import { uploadProjectFile } from '../middleware/upload.js'
+import ExcelJS from 'exceljs'
+// Helpers for bulk custom project idea upload/preview (Excel/PDF)
+const parseCustomIdeaUploadFile = async (file) => {
+  if (!file) throw new ApiError(400, 'Upload file is required')
+  const fileName = String(file.originalname || '').toLowerCase()
+  if (fileName.endsWith('.xlsx')) return parseCustomIdeaExcelBuffer(file.buffer)
+  if (fileName.endsWith('.pdf')) return parseCustomIdeaPdfBuffer(file.buffer)
+  throw new ApiError(400, 'Unsupported file type. Use .xlsx or .pdf')
+}
+
+const parseCustomIdeaExcelBuffer = async (buffer) => {
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(buffer)
+  const worksheet = workbook.worksheets[0]
+  if (!worksheet) throw new ApiError(400, 'Excel file does not contain any worksheet')
+  const rows = []
+  const headerRow = worksheet.getRow(1)
+  const headers = headerRow.values.slice(1).map((header) => String(header || '').trim().toLowerCase())
+  const keyByIndex = headers.map((h) => {
+    if (h.includes('title')) return 'title'
+    if (h.includes('desc')) return 'description'
+    if (h.includes('diffic')) return 'difficulty'
+    if (h.includes('domain') || h.includes('category')) return 'domain'
+    if (h.includes('tech')) return 'technologies'
+    return null
+  })
+  if (!keyByIndex.includes('title')) throw new ApiError(400, 'Excel headers must include a title column')
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return
+    const values = row.values.slice(1)
+    const record = {}
+    values.forEach((value, index) => {
+      const key = keyByIndex[index]
+      if (!key) return
+      record[key] = typeof value === 'object' && value?.text ? value.text : String(value || '').trim()
+    })
+    const isRowEmpty = Object.values(record).every((v) => !String(v || '').trim())
+    if (!isRowEmpty) rows.push(record)
+  })
+  return rows
+}
+
+const parseCustomIdeaPdfBuffer = async (buffer) => {
+  const PDFParse = (await import('pdf-parse')).default
+  const result = await PDFParse(buffer)
+  const lines = String(result.text || '').split('\n').map((line) => line.trim()).filter(Boolean)
+  return lines.map((line) => {
+    const [title, description, difficulty, domain, technologies] = line.split('|').map((part) => part?.trim() || '')
+    return { title, description, difficulty, domain, technologies }
+  })
+}
+
+const buildCustomIdeaUploadPreview = (rawRecords = []) => {
+  const validRows = []
+  const invalidRows = []
+  rawRecords.forEach((row, index) => {
+    const rowNumber = index + 2
+    try {
+      const candidate = normalizeCustomProjectIdea(row)
+      validRows.push({ rowNumber, idea: candidate })
+    } catch (err) {
+      invalidRows.push({ rowNumber, title: String(row.title || ''), errors: [err.message || 'invalid row'] })
+    }
+  })
+  return {
+    totalRows: rawRecords.length,
+    validCount: validRows.length,
+    invalidCount: invalidRows.length,
+    validRows,
+    invalidRows
+  }
+}
+
+export const previewTeamCustomIdeaUpload = asyncHandler(async (req, res) => {
+  const records = await parseCustomIdeaUploadFile(req.file)
+  const preview = buildCustomIdeaUploadPreview(records)
+  res.json({
+    message: 'Upload preview generated',
+    totalRows: preview.totalRows,
+    validCount: preview.validCount,
+    invalidCount: preview.invalidCount,
+    invalidRows: preview.invalidRows.slice(0, 100),
+    validRows: preview.validRows.slice(0, 200).map((row) => ({ rowNumber: row.rowNumber, ...row.idea }))
+  })
+})
+
+export const uploadTeamCustomIdeaBulk = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.team.teamId)
+  if (!team) throw new ApiError(404, 'Team not found')
+  const records = await parseCustomIdeaUploadFile(req.file)
+  const preview = buildCustomIdeaUploadPreview(records)
+  if (preview.validCount === 0) {
+    res.status(400).json({
+      message: 'No valid rows found in upload. Please correct errors and try again.',
+      totalRows: preview.totalRows,
+      validCount: preview.validCount,
+      invalidCount: preview.invalidCount,
+      invalidRows: preview.invalidRows.slice(0, 100)
+    })
+    return
+  }
+  // For now, only allow one pending idea at a time (like UI). If multiple, take first valid.
+  if (team.customProjectIdea?.status === 'pending') {
+    throw new ApiError(409, 'A custom project idea is already pending approval')
+  }
+  // Use first valid idea
+  const firstIdea = preview.validRows[0].idea
+  team.customProjectIdea = firstIdea
+  await team.save()
+  res.status(201).json({
+    message: 'Custom project idea submitted for admin approval',
+    team: toPlainTeam(team),
+    loadedIdeas: [firstIdea],
+    totalRows: preview.totalRows,
+    validCount: preview.validCount,
+    invalidCount: preview.invalidCount,
+    invalidRows: preview.invalidRows.slice(0, 50)
+  })
+})
 import { Team } from '../models/Team.js'
 import { Project } from '../models/Project.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 import { getNextTeamNumber } from '../services/teamNumberService.js'
 import { assignRandomProject, getProjectStats } from '../services/projectService.js'
-import ExcelJS from 'exceljs'
 import { createDefaultTeamPassword, hashPassword } from '../utils/password.js'
 
 const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -739,6 +858,33 @@ export const recallProfileUpdateRequest = asyncHandler(async (req, res) => {
 
   res.json({
     message: 'Profile update request recalled successfully',
+    team: toPlainTeam(team)
+  })
+})
+
+export const submitCustomProjectIdeaRequest = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.team.teamId)
+  if (!team) {
+    throw new ApiError(404, 'Team not found')
+  }
+
+  if (team.customProjectIdea?.status === 'pending') {
+    throw new ApiError(409, 'A custom project idea is already pending approval')
+  }
+
+  const normalizedCustomProjectIdea = normalizeCustomProjectIdea(req.body)
+  if (!normalizedCustomProjectIdea) {
+    throw new ApiError(
+      400,
+      'Custom project idea requires title, description, difficulty, domain, and technologies'
+    )
+  }
+
+  team.customProjectIdea = normalizedCustomProjectIdea
+  await team.save()
+
+  res.json({
+    message: 'Custom project idea submitted for admin approval',
     team: toPlainTeam(team)
   })
 })

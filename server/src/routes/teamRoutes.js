@@ -10,8 +10,12 @@ import {
   submitProfileUpdateRequest,
   recallProfileUpdateRequest,
   reviewProfileUpdateRequest,
-  reviewCustomProjectIdeaRequest
+  submitCustomProjectIdeaRequest,
+  reviewCustomProjectIdeaRequest,
+  previewTeamCustomIdeaUpload,
+  uploadTeamCustomIdeaBulk
 } from '../controllers/teamController.js'
+import { uploadProjectFile } from '../middleware/upload.js'
 import { requireAdminAuth, requireTeamAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -26,6 +30,11 @@ router.post('/admin/reconcile-projects', requireAdminAuth, reconcileProjectAssig
 
 router.post('/team/update-request', requireTeamAuth, submitProfileUpdateRequest)
 router.post('/team/update-request/recall', requireTeamAuth, recallProfileUpdateRequest)
+router.post('/team/custom-idea/request', requireTeamAuth, submitCustomProjectIdeaRequest)
+
+// Team bulk custom project idea upload/preview (Excel/PDF)
+router.post('/team/custom-idea/upload/preview', requireTeamAuth, uploadProjectFile.single('file'), previewTeamCustomIdeaUpload)
+router.post('/team/custom-idea/upload', requireTeamAuth, uploadProjectFile.single('file'), uploadTeamCustomIdeaBulk)
 
 router.post('/register', registerTeam)
 router.get('/export', exportTeamsExcel)

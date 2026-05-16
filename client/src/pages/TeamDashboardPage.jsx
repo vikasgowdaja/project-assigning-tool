@@ -9,14 +9,75 @@ import {
   getTeamProfile,
   getTeamToken,
   recallTeamProfileUpdateRequest,
-  submitTeamProfileUpdateRequest
+  submitTeamCustomProjectIdeaRequest,
+  submitTeamProfileUpdateRequest,
+  previewTeamCustomIdeaFile,
+  uploadTeamCustomIdeaFile
 } from '../services/api'
+  // Bulk upload state for custom project ideas
+  const [ideaFile, setIdeaFile] = useState(null)
+  const [ideaUploadLoading, setIdeaUploadLoading] = useState(false)
+  const [ideaUploadError, setIdeaUploadError] = useState('')
+  const [ideaUploadMessage, setIdeaUploadMessage] = useState('')
+  const [ideaPreview, setIdeaPreview] = useState(null)
+  const handleIdeaFilePreview = async () => {
+    if (!ideaFile) {
+      setIdeaUploadError('Select an Excel (.xlsx) or PDF (.pdf) file first')
+      return
+    }
+    setIdeaUploadLoading(true)
+    setIdeaUploadError('')
+    setIdeaUploadMessage('')
+    setIdeaPreview(null)
+    try {
+      const data = await previewTeamCustomIdeaFile(ideaFile)
+      setIdeaPreview(data)
+      setIdeaUploadMessage(
+        `Preview ready. Valid: ${data.validCount}, invalid: ${data.invalidCount}, total rows: ${data.totalRows}`
+      )
+    } catch (err) {
+      setIdeaUploadError(err.response?.data?.message || 'Preview failed')
+      setIdeaPreview(null)
+    } finally {
+      setIdeaUploadLoading(false)
+    }
+  }
+
+  const handleIdeaFileUpload = async () => {
+    if (!ideaFile) {
+      setIdeaUploadError('Select an Excel (.xlsx) or PDF (.pdf) file first')
+      return
+    }
+    setIdeaUploadLoading(true)
+    setIdeaUploadError('')
+    setIdeaUploadMessage('')
+    setIdeaPreview(null)
+    try {
+      const data = await uploadTeamCustomIdeaFile(ideaFile)
+      setTeam(data.team)
+      setIdeaUploadMessage(data.message || 'Custom project idea submitted for admin approval')
+      setIdeaFile(null)
+      setIdeaPreview(null)
+    } catch (err) {
+      setIdeaUploadError(err.response?.data?.message || 'Upload failed')
+    } finally {
+      setIdeaUploadLoading(false)
+    }
+  }
 import { formatDateTime } from '../utils/date'
 
 const initialPasswordForm = {
   currentPassword: '',
   newPassword: '',
   confirmPassword: ''
+}
+
+const initialIdeaDraft = {
+  title: '',
+  description: '',
+  difficulty: 'Medium',
+  domain: '',
+  technologies: ''
 }
 
 const buildProfileDraft = (sourceTeam) => ({
@@ -31,6 +92,13 @@ const buildProfileDraft = (sourceTeam) => ({
 })
 
 export function TeamDashboardPage() {
+  const TABS = [
+    { key: 'profile', label: 'Team Profile' },
+    { key: 'idea', label: 'New Project Idea' },
+    { key: 'update', label: 'Student Details Change' },
+    { key: 'password', label: 'Change Password' }
+  ]
+  const [activeTab, setActiveTab] = useState('profile')
   const [team, setTeam] = useState(getTeamProfile())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -47,6 +115,10 @@ export function TeamDashboardPage() {
   const [profileRequestError, setProfileRequestError] = useState('')
   const [profileRequestMessage, setProfileRequestMessage] = useState('')
   const [showRecallDialog, setShowRecallDialog] = useState(false)
+  const [ideaDraft, setIdeaDraft] = useState(initialIdeaDraft)
+  const [ideaRequestLoading, setIdeaRequestLoading] = useState(false)
+  const [ideaRequestError, setIdeaRequestError] = useState('')
+  const [ideaRequestMessage, setIdeaRequestMessage] = useState('')
 
   useEffect(() => {
     const token = getTeamToken()
@@ -97,6 +169,10 @@ export function TeamDashboardPage() {
 
   const updateProfileDraftField = (field, value) => {
     setProfileDraft((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const updateIdeaDraftField = (field, value) => {
+    setIdeaDraft((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleChangePassword = async (event) => {
@@ -154,6 +230,31 @@ export function TeamDashboardPage() {
     }
   }
 
+  const handleSubmitIdeaRequest = async (event) => {
+    event.preventDefault()
+    setIdeaRequestLoading(true)
+    setIdeaRequestError('')
+    setIdeaRequestMessage('')
+
+    try {
+      const result = await submitTeamCustomProjectIdeaRequest({
+        title: ideaDraft.title,
+        description: ideaDraft.description,
+        difficulty: ideaDraft.difficulty,
+        domain: ideaDraft.domain,
+        technologies: ideaDraft.technologies
+      })
+
+      setTeam(result.team)
+      setIdeaDraft(initialIdeaDraft)
+      setIdeaRequestMessage(result.message || 'Custom project idea submitted for admin approval')
+    } catch (requestError) {
+      setIdeaRequestError(requestError.response?.data?.message || 'Failed to submit custom project idea')
+    } finally {
+      setIdeaRequestLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <PageShell>
@@ -176,25 +277,43 @@ export function TeamDashboardPage() {
 
   return (
     <PageShell>
-      <section className="space-y-6">
-        <div className="rounded-3xl border border-white/25 bg-white/10 p-6 shadow-2xl backdrop-blur-xl md:p-8">
-          <p className="inline-flex rounded-full border border-cyan-300/40 bg-cyan-200/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-cyan-100">
-            Team Dashboard
-          </p>
-          <h1 className="mt-3 text-3xl font-black text-white md:text-4xl">
-            {team.teamNumber} | {team.teamName}
-          </h1>
-          <p className="mt-2 text-sm text-cyan-50/90 md:text-base">
-            Manage your account security and monitor your team assignment details.
-          </p>
+      <div className="rounded-3xl border border-white/25 bg-white/10 p-6 shadow-2xl backdrop-blur-xl md:p-8 mb-6">
+        <p className="inline-flex rounded-full border border-cyan-300/40 bg-cyan-200/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-cyan-100">
+          Team Dashboard
+        </p>
+        <h1 className="mt-3 text-3xl font-black text-white md:text-4xl">
+          {team.teamNumber} | {team.teamName}
+        </h1>
+        <p className="mt-2 text-sm text-cyan-50/90 md:text-base">
+          Manage your account security and monitor your team assignment details.
+        </p>
+        {team.isDefaultPassword ? (
+          <div className="mt-4 rounded-lg border border-amber-300/40 bg-amber-900/30 px-4 py-3 text-sm text-amber-100">
+            You are still using the default password. Please change it now.
+          </div>
+        ) : null}
+      </div>
 
-          {team.isDefaultPassword ? (
-            <div className="mt-4 rounded-lg border border-amber-300/40 bg-amber-900/30 px-4 py-3 text-sm text-amber-100">
-              You are still using the default password. Please change it now.
-            </div>
-          ) : null}
-        </div>
+      {/* Tab Switcher */}
+      <div className="mb-8 flex flex-wrap gap-3">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            className={`rounded-lg px-4 py-2.5 text-sm font-bold uppercase tracking-wide transition border-2 ${
+              activeTab === tab.key
+                ? 'bg-cyan-400 text-slate-900 border-cyan-400'
+                : 'bg-black/30 text-cyan-100 border-white/20 hover:bg-cyan-900/30'
+            }`}
+            onClick={() => setActiveTab(tab.key)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
+      {/* Tab Panels */}
+      {activeTab === 'profile' && (
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl border border-white/20 bg-black/20 p-5">
             <h2 className="text-xl font-black text-white">Team Profile</h2>
@@ -218,7 +337,6 @@ export function TeamDashboardPage() {
               </ul>
             </div>
           </div>
-
           <div className="rounded-3xl border border-white/20 bg-black/20 p-5">
             <h2 className="text-xl font-black text-white">Project Status</h2>
             {team.assignedProject?.title ? (
@@ -246,7 +364,6 @@ export function TeamDashboardPage() {
             ) : (
               <p className="mt-3 text-sm text-cyan-100/90">Project is not assigned yet.</p>
             )}
-
             <div className="mt-5 rounded-xl border border-white/15 bg-white/5 p-3 text-xs text-cyan-100/90">
               <p className="font-semibold uppercase tracking-wider text-cyan-100">Security Activity</p>
               <ul className="mt-2 space-y-1">
@@ -259,32 +376,124 @@ export function TeamDashboardPage() {
             </div>
           </div>
         </div>
+      )}
 
+      {activeTab === 'idea' && (
+        <section className="rounded-3xl border border-white/20 bg-black/20 p-6">
+          <h2 className="text-2xl font-black text-white">New Project Idea Request</h2>
+          <p className="mt-2 text-sm text-cyan-100/90">
+            Submit a new custom project idea for admin approval. Approved ideas become your assigned project.
+          </p>
+          {ideaRequestError && (
+            <div className="mt-4 rounded-lg border border-rose-300/40 bg-rose-900/30 px-4 py-3 text-sm text-rose-100">{ideaRequestError}</div>
+          )}
+          {ideaRequestMessage && (
+            <div className="mt-4 rounded-lg border border-emerald-300/40 bg-emerald-900/30 px-4 py-3 text-sm text-emerald-100">{ideaRequestMessage}</div>
+          )}
+          {ideaUploadError && (
+            <div className="mt-4 rounded-lg border border-rose-300/40 bg-rose-900/30 px-4 py-3 text-sm text-rose-100">{ideaUploadError}</div>
+          )}
+          {ideaUploadMessage && (
+            <div className="mt-4 rounded-lg border border-emerald-300/40 bg-emerald-900/30 px-4 py-3 text-sm text-emerald-100">{ideaUploadMessage}</div>
+          )}
+          <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-4 text-sm text-cyan-100/90">
+            <div>Status: <span className="font-semibold uppercase">{team.customProjectIdea?.status || 'none'}</span></div>
+            <div>Submitted At: {formatDateTime(team.customProjectIdea?.submittedAt)}</div>
+            <div>Current Idea: {team.customProjectIdea?.title || '-'}</div>
+          </div>
+          <form onSubmit={handleSubmitIdeaRequest} className="mt-5 space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">Project Title</label>
+              <input required value={ideaDraft.title} onChange={(event) => updateIdeaDraftField('title', event.target.value)} className="w-full rounded-lg border border-white/25 bg-slate-900 px-3 py-2 text-slate-100" placeholder="Enter project title" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">Description</label>
+              <textarea required rows={3} value={ideaDraft.description} onChange={(event) => updateIdeaDraftField('description', event.target.value)} className="w-full rounded-lg border border-white/25 bg-slate-900 px-3 py-2 text-slate-100" placeholder="Describe the project idea" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">Difficulty</label>
+                <select value={ideaDraft.difficulty} onChange={(event) => updateIdeaDraftField('difficulty', event.target.value)} className="w-full rounded-lg border border-white/25 bg-slate-900 px-3 py-2 text-slate-100">
+                  <option>Easy</option>
+                  <option>Medium</option>
+                  <option>Hard</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">Domain</label>
+                <input required value={ideaDraft.domain} onChange={(event) => updateIdeaDraftField('domain', event.target.value)} className="w-full rounded-lg border border-white/25 bg-slate-900 px-3 py-2 text-slate-100" placeholder="Healthcare, FinTech, EdTech..." />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">Technologies</label>
+              <input required value={ideaDraft.technologies} onChange={(event) => updateIdeaDraftField('technologies', event.target.value)} className="w-full rounded-lg border border-white/25 bg-slate-900 px-3 py-2 text-slate-100" placeholder="React, Node.js, MongoDB" />
+            </div>
+            <button type="submit" disabled={ideaRequestLoading || team.customProjectIdea?.status === 'pending'} className="rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-black uppercase tracking-wide text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60">
+              {ideaRequestLoading ? 'Submitting...' : team.customProjectIdea?.status === 'pending' ? 'Idea Pending Approval' : 'Submit New Idea Request'}
+            </button>
+          </form>
+
+          <div className="mt-8 space-y-4 rounded-xl border border-cyan-200/30 bg-cyan-100/5 p-4">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-cyan-100">Bulk Upload (Excel/PDF)</h3>
+            <input type="file" accept=".xlsx,.pdf" onChange={(event) => setIdeaFile(event.target.files?.[0] || null)} className="block w-full rounded-lg border border-white/20 bg-slate-900 px-3 py-2 text-sm text-slate-100" />
+            <p className="text-xs text-cyan-100/80">Excel headers: title, description, difficulty, domain, technologies. PDF: title | description | difficulty | domain | tech1,tech2</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={ideaUploadLoading} onClick={handleIdeaFilePreview} className="rounded-lg border border-indigo-300/40 bg-indigo-900/30 px-4 py-2 text-sm font-bold text-indigo-100 hover:bg-indigo-800/50 disabled:cursor-not-allowed disabled:opacity-60">Preview File</button>
+              <button type="button" disabled={ideaUploadLoading} onClick={handleIdeaFileUpload} className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60">Upload File</button>
+            </div>
+            {ideaPreview && (
+              <div className="rounded-lg border border-white/15 bg-black/30 p-3 text-xs text-cyan-100">
+                <div>Valid rows: {ideaPreview.validCount}</div>
+                <div>Invalid rows: {ideaPreview.invalidCount}</div>
+                <div>Total rows: {ideaPreview.totalRows}</div>
+                {ideaPreview.invalidRows?.length > 0 && (
+                  <div className="mt-2">
+                    <div className="font-bold text-rose-200">Invalid Rows:</div>
+                    <ul className="list-disc pl-5">
+                      {ideaPreview.invalidRows.map((row) => (
+                        <li key={row.rowNumber} className="text-rose-100">Row {row.rowNumber}: {row.title} - {row.errors?.join(', ')}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {ideaPreview.validRows?.length > 0 && (
+                  <div className="mt-2">
+                    <div className="font-bold text-emerald-200">Valid Ideas:</div>
+                    <ul className="list-disc pl-5">
+                      {ideaPreview.validRows.map((row) => (
+                        <li key={row.rowNumber} className="text-emerald-100">Row {row.rowNumber}: {row.title || row.idea?.title}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'update' && (
         <section className="rounded-3xl border border-white/20 bg-black/20 p-6">
           <h2 className="text-2xl font-black text-white">Student Details Change Request</h2>
           <p className="mt-2 text-sm text-cyan-100/90">
             Team lead can request edits to student/member details. Admin approval is required before changes are applied.
           </p>
-
           {profileRequestError ? (
             <div className="mt-4 rounded-lg border border-rose-300/40 bg-rose-900/30 px-4 py-3 text-sm text-rose-100">
               {profileRequestError}
             </div>
           ) : null}
-
           {profileRequestMessage ? (
             <div className="mt-4 rounded-lg border border-emerald-300/40 bg-emerald-900/30 px-4 py-3 text-sm text-emerald-100">
               {profileRequestMessage}
             </div>
           ) : null}
-
           <div className="mt-4 rounded-xl border border-white/15 bg-white/5 p-4 text-sm text-cyan-100/90">
             <div>Status: <span className="font-semibold uppercase">{team.profileUpdateRequest?.status || 'none'}</span></div>
             <div>Requested At: {formatDateTime(team.profileUpdateRequest?.requestedAt)}</div>
             <div>Reviewed At: {formatDateTime(team.profileUpdateRequest?.reviewedAt)}</div>
             <div>Review Note: {team.profileUpdateRequest?.reviewNote || '-'}</div>
           </div>
-
           <form onSubmit={handleSubmitProfileRequest} className="mt-5 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               {[
@@ -324,9 +533,7 @@ export function TeamDashboardPage() {
                 />
               </div>
             </div>
-
             <MemberFields members={profileMembers} setMembers={setProfileMembers} />
-
             <div className="flex flex-wrap gap-3">
               <button
                 type="submit"
@@ -335,7 +542,6 @@ export function TeamDashboardPage() {
               >
                 {profileRequestLoading ? 'Submitting...' : team.profileUpdateRequest?.status === 'pending' ? 'Request Pending Approval' : 'Submit Change Request'}
               </button>
-
               {team.profileUpdateRequest?.status === 'pending' ? (
                 <button
                   type="button"
@@ -349,7 +555,9 @@ export function TeamDashboardPage() {
             </div>
           </form>
         </section>
+      )}
 
+      {activeTab === 'password' && (
         <section className="rounded-3xl border border-white/20 bg-black/20 p-6">
           <h2 className="text-2xl font-black text-white">Change Password</h2>
           {passwordError ? (
@@ -362,7 +570,6 @@ export function TeamDashboardPage() {
               {passwordMessage}
             </div>
           ) : null}
-
           <form onSubmit={handleChangePassword} className="mt-5 grid gap-4 md:grid-cols-3">
             <input
               required
@@ -388,7 +595,6 @@ export function TeamDashboardPage() {
               className="rounded-lg border border-white/25 bg-slate-900 px-3 py-2 text-slate-100"
               placeholder="Confirm new password"
             />
-
             <button
               type="submit"
               disabled={passwordLoading}
@@ -398,18 +604,18 @@ export function TeamDashboardPage() {
             </button>
           </form>
         </section>
+      )}
 
-        <ActionDialog
-          isOpen={showRecallDialog}
-          title="Recall Profile Update Request"
-          message="Recall the pending profile update request?"
-          confirmLabel="Recall Request"
-          confirmTone="amber"
-          loading={profileRequestLoading}
-          onCancel={() => setShowRecallDialog(false)}
-          onConfirm={handleRecallProfileRequest}
-        />
-      </section>
+      <ActionDialog
+        isOpen={showRecallDialog}
+        title="Recall Profile Update Request"
+        message="Recall the pending profile update request?"
+        confirmLabel="Recall Request"
+        confirmTone="amber"
+        loading={profileRequestLoading}
+        onCancel={() => setShowRecallDialog(false)}
+        onConfirm={handleRecallProfileRequest}
+      />
     </PageShell>
   )
 }

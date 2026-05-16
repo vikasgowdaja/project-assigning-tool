@@ -1,3 +1,26 @@
+// Team: Bulk custom project idea upload/preview (Excel/PDF)
+export const previewTeamCustomIdeaFile = async (file, token) => {
+  const activeToken = token || getTeamToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post('/teams/team/custom-idea/upload/preview', formData, {
+    headers: { Authorization: `Bearer ${activeToken}` }
+  })
+  return data
+}
+
+export const uploadTeamCustomIdeaFile = async (file, token) => {
+  const activeToken = token || getTeamToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post('/teams/team/custom-idea/upload', formData, {
+    headers: { Authorization: `Bearer ${activeToken}` }
+  })
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+  return data
+}
 import axios from 'axios'
 
 const ADMIN_TOKEN_KEY = 'admin_auth_token'
@@ -225,6 +248,21 @@ export const reviewTeamProfileUpdateRequest = async (teamId, payload) => {
 
 export const reviewTeamCustomProjectIdea = async (teamId, payload) => {
   const { data } = await api.post(`/teams/admin/${teamId}/custom-idea/review`, payload)
+  return data
+}
+
+export const submitTeamCustomProjectIdeaRequest = async (payload, token) => {
+  const activeToken = token || getTeamToken()
+  const { data } = await api.post('/teams/team/custom-idea/request', payload, {
+    headers: {
+      Authorization: `Bearer ${activeToken}`
+    }
+  })
+
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+
   return data
 }
 

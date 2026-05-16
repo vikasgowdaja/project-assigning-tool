@@ -69,10 +69,34 @@ const sanitizeTeamDashboardPayload = (team) => ({
   assignedAt: team.assignedAt,
   customProjectIdea: team.customProjectIdea,
   profileUpdateRequest: team.profileUpdateRequest,
+  registrationStatus: team.registrationStatus,
+  registrationReviewedAt: team.registrationReviewedAt,
+  registrationReviewedBy: team.registrationReviewedBy,
+  registrationReviewNote: team.registrationReviewNote,
   isDefaultPassword: Boolean(team.isDefaultPassword),
   passwordChangedAt: team.passwordChangedAt,
   securityActivity: team.securityActivity || {}
 })
+
+const ensureApprovedRegistration = (team) => {
+  const registrationStatus = String(team?.registrationStatus || 'approved')
+  const hasAssignedProject = Boolean(String(team?.assignedProject?.title || '').trim())
+
+  if (registrationStatus === 'approved') {
+    return
+  }
+
+  // Compatibility fallback for legacy records that became pending after schema updates.
+  if (registrationStatus === 'pending' && hasAssignedProject) {
+    return
+  }
+
+  if (registrationStatus === 'rejected') {
+    throw new ApiError(403, 'Team registration was rejected. Please contact admin.')
+  }
+
+  throw new ApiError(403, 'Team registration is pending admin approval.')
+}
 
 const sanitizeAdminTeamSecurityRow = (team) => ({
   id: team._id,
@@ -194,6 +218,8 @@ export const loginTeam = asyncHandler(async (req, res) => {
   if (!team) {
     throw new ApiError(401, 'Invalid team credentials')
   }
+
+  ensureApprovedRegistration(team)
 
   await ensureTeamPasswordHash(team)
 
@@ -412,6 +438,8 @@ export const getCurrentTeam = asyncHandler(async (req, res) => {
   if (!team) {
     throw new ApiError(404, 'Team account not found')
   }
+
+  ensureApprovedRegistration(team)
 
   res.json({
     team: sanitizeTeamDashboardPayload(team)

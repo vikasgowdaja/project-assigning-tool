@@ -281,6 +281,26 @@ export const getTeams = async () => {
   return data
 }
 
+export const getAdminTeams = async () => {
+  const { data } = await api.get('/teams/admin')
+  return data
+}
+
+export const reviewTeamRegistrationRequest = async (teamId, payload) => {
+  const { data } = await api.post(`/teams/admin/${teamId}/registration/review`, payload)
+  return data
+}
+
+export const getRegistrationMigrationSummary = async () => {
+  const { data } = await api.get('/teams/admin/migration/registration-summary')
+  return data
+}
+
+export const runRegistrationMigration = async (payload) => {
+  const { data } = await api.post('/teams/admin/migration/registration', payload)
+  return data
+}
+
 export const getStats = async () => {
   const { data } = await api.get('/teams/stats')
   return data

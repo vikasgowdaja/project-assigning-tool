@@ -226,6 +226,24 @@ const teamSchema = new mongoose.Schema(
       type: profileUpdateRequestSchema,
       default: () => ({ status: 'none' })
     },
+    registrationStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+      index: true
+    },
+    registrationReviewedAt: {
+      type: Date,
+      default: null
+    },
+    registrationReviewedBy: {
+      type: String,
+      default: ''
+    },
+    registrationReviewNote: {
+      type: String,
+      default: ''
+    },
     assignedAt: {
       type: Date,
       default: null

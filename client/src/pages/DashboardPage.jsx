@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PageShell } from '../components/PageShell'
 import { StatsCard } from '../components/StatsCard'
 import { TeamsTable } from '../components/TeamsTable'
@@ -9,8 +9,6 @@ export function DashboardPage() {
   const [teams, setTeams] = useState([])
   const [stats, setStats] = useState({
     totalTeams: 0,
-    remainingProjects: 0,
-    totalProjects: 0,
     latestTeam: null
   })
   const [loading, setLoading] = useState(true)
@@ -54,15 +52,6 @@ export function DashboardPage() {
     }
   }, [])
 
-  const progressLabel = useMemo(() => {
-    if (!stats.totalProjects) {
-      return '0%'
-    }
-
-    const progress = ((stats.totalTeams / stats.totalProjects) * 100).toFixed(0)
-    return `${progress}%`
-  }, [stats.totalProjects, stats.totalTeams])
-
   const handleDownload = async () => {
     try {
       setDownloading(true)
@@ -94,14 +83,8 @@ export function DashboardPage() {
           </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2">
           <StatsCard title="Total Teams" value={stats.totalTeams} />
-          <StatsCard
-            title="Remaining Projects"
-            value={stats.remainingProjects}
-            subtitle={`${stats.totalProjects || 0} total projects`}
-          />
-          <StatsCard title="Registration Progress" value={progressLabel} />
           <StatsCard
             title="Latest Team"
             value={stats.latestTeam?.teamNumber || '-'}

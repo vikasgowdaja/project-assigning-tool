@@ -2,16 +2,20 @@ import { Router } from 'express'
 import {
   exportTeamsExcel,
   getDashboardStats,
+  getAdminTeams,
+  getRegistrationMigrationSummary,
   getTeams,
   registerTeam,
   deleteTeam,
   updateTeam,
+  runRegistrationMigration,
   reconcileProjectAssignments,
   submitProfileUpdateRequest,
   recallProfileUpdateRequest,
   reviewProfileUpdateRequest,
   submitCustomProjectIdeaRequest,
   reviewCustomProjectIdeaRequest,
+  reviewTeamRegistrationRequest,
   previewTeamCustomIdeaUpload,
   uploadTeamCustomIdeaBulk
 } from '../controllers/teamController.js'
@@ -24,6 +28,10 @@ const router = Router()
 // Admin CRUD
 router.post('/admin/:teamId/update-request/review', requireAdminAuth, reviewProfileUpdateRequest)
 router.post('/admin/:teamId/custom-idea/review', requireAdminAuth, reviewCustomProjectIdeaRequest)
+router.post('/admin/:teamId/registration/review', requireAdminAuth, reviewTeamRegistrationRequest)
+router.get('/admin', requireAdminAuth, getAdminTeams)
+router.get('/admin/migration/registration-summary', requireAdminAuth, getRegistrationMigrationSummary)
+router.post('/admin/migration/registration', requireAdminAuth, runRegistrationMigration)
 router.delete('/:id', requireAdminAuth, deleteTeam)
 router.patch('/:id', requireAdminAuth, updateTeam)
 router.post('/admin/reconcile-projects', requireAdminAuth, reconcileProjectAssignments)

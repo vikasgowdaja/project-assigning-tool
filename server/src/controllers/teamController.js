@@ -316,6 +316,55 @@ const assertProfileUpdateUniqueness = async (teamId, normalizedProfile) => {
 
 const toPlainTeam = (team) => (team.toObject ? team.toObject() : team)
 
+const publicApprovedTeamsQuery = {
+  $or: [
+    { registrationStatus: 'approved' },
+    { registrationStatus: { $exists: false } },
+    {
+      registrationStatus: 'pending',
+      'assignedProject.title': { $exists: true, $ne: '' }
+    }
+  ]
+}
+
+const escapeForRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const upsertApprovedIdeaIntoProjectPool = async (idea) => {
+  const normalizedTitle = String(idea?.title || '').trim()
+  if (!normalizedTitle) {
+    return null
+  }
+
+  const query = {
+    title: {
+      $regex: new RegExp(`^${escapeForRegex(normalizedTitle)}$`, 'i')
+    }
+  }
+
+  const update = {
+    $set: {
+      title: normalizedTitle,
+      description: String(idea?.description || '').trim(),
+      difficulty: String(idea?.difficulty || 'Medium').trim(),
+      domain: String(idea?.domain || '').trim(),
+      technologies: Array.isArray(idea?.technologies)
+        ? idea.technologies.map((item) => String(item || '').trim()).filter(Boolean)
+        : []
+    },
+    $setOnInsert: {
+      assigned: false,
+      assignedTo: null,
+      assignedAt: null
+    }
+  }
+
+  return Project.findOneAndUpdate(query, update, {
+    new: true,
+    upsert: true,
+    setDefaultsOnInsert: true
+  })
+}
+
 // ADMIN: Delete a team and return project to pool
 export const deleteTeam = asyncHandler(async (req, res) => {
   const team = await Team.findById(req.params.id)
@@ -630,7 +679,7 @@ export const registerTeam = asyncHandler(async (req, res) => {
         { leadUsn: { $in: normalizedMembers.map((m) => m.usn) } },
         { 'members.usn': { $in: normalizedMembers.map((m) => m.usn) } }
       ]
-    }),
+    })
   ])
 
   if (existingTeamName) {
@@ -679,67 +728,203 @@ export const registerTeam = asyncHandler(async (req, res) => {
       technologies: []
     },
     customProjectIdea: normalizedCustomProjectIdea,
+    profileUpdateRequest: {
+      status: 'none'
+    },
+    registrationStatus: 'pending',
+    registrationReviewedAt: null,
+    registrationReviewedBy: '',
+    registrationReviewNote: '',
     assignedAt: null
-  })
-
-  if (!normalizedCustomProjectIdea) {
-    const assignedProject = await assignRandomProject(team._id)
-    if (!assignedProject) {
-      await Team.deleteOne({ _id: team._id })
-      throw new ApiError(409, 'Project assignment failed. Please try again')
-    }
-
-    team.assignedProject = {
-      title: assignedProject.title,
-      description: assignedProject.description,
-      difficulty: assignedProject.difficulty,
-      domain: assignedProject.domain,
-      technologies: assignedProject.technologies
-    }
-    team.assignedAt = assignedProject.assignedAt
-    await team.save()
-  }
-
-  const teamData = toPlainTeam(team)
-
-  const [projectStats, totalTeams] = await Promise.all([
-    getProjectStats(),
-    Team.countDocuments()
-  ])
-
-  req.app.get('io').emit('team:registered', {
-    team: teamData,
-    stats: {
-      ...projectStats,
-      totalTeams,
-      latestTeam: teamData
-    }
   })
 
   res.status(201).json({
     message: normalizedCustomProjectIdea
-      ? 'Registration successful. Custom project idea submitted for approval.'
-      : 'Registration successful',
-    team: teamData
+      ? 'Registration submitted and custom project idea sent for approval. Wait for admin approval to login.'
+      : 'Registration submitted successfully. Wait for admin approval to login.',
+    team: toPlainTeam(team)
   })
 })
 
-export const getTeams = asyncHandler(async (req, res) => {
+export const reviewTeamRegistrationRequest = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.params.teamId)
+  if (!team) {
+    throw new ApiError(404, 'Team not found')
+  }
+
+  const action = String(req.body?.action || '').trim().toLowerCase()
+  const reviewNote = String(req.body?.reviewNote || '').trim()
+
+  if (!['approve', 'reject'].includes(action)) {
+    throw new ApiError(400, 'Action must be approve or reject')
+  }
+
+  if (action === 'approve') {
+    if (team.registrationStatus === 'approved') {
+      throw new ApiError(400, 'Team registration is already approved')
+    }
+
+    team.registrationStatus = 'approved'
+    team.registrationReviewedAt = new Date()
+    team.registrationReviewedBy = String(req.admin?.username || 'admin')
+    team.registrationReviewNote = reviewNote
+
+    if (!team.assignedProject?.title && team.customProjectIdea?.status !== 'pending') {
+      const assignedProject = await assignRandomProject(team._id)
+      if (!assignedProject) {
+        throw new ApiError(409, 'Registration approved, but project assignment failed. Please try again')
+      }
+
+      team.assignedProject = {
+        title: assignedProject.title,
+        description: assignedProject.description,
+        difficulty: assignedProject.difficulty,
+        domain: assignedProject.domain,
+        technologies: assignedProject.technologies
+      }
+      team.assignedAt = assignedProject.assignedAt
+    }
+
+    await team.save()
+
+    const approvedTeams = await Team.find(publicApprovedTeamsQuery).sort({ createdAt: -1 }).lean()
+    const latestApprovedTeam = approvedTeams[0] || null
+
+    req.app.get('io').emit('team:registered', {
+      team: toPlainTeam(team),
+      stats: {
+        totalTeams: approvedTeams.length,
+        latestTeam: latestApprovedTeam
+      }
+    })
+
+    res.json({
+      message: 'Team registration approved',
+      team: toPlainTeam(team)
+    })
+    return
+  }
+
+  team.registrationStatus = 'rejected'
+  team.registrationReviewedAt = new Date()
+  team.registrationReviewedBy = String(req.admin?.username || 'admin')
+  team.registrationReviewNote = reviewNote
+  await team.save()
+
+  res.json({
+    message: 'Team registration rejected',
+    team: toPlainTeam(team)
+  })
+})
+
+export const getAdminTeams = asyncHandler(async (req, res) => {
   const teams = await Team.find().sort({ createdAt: -1 }).lean()
   res.json(teams)
 })
 
-export const getDashboardStats = asyncHandler(async (req, res) => {
-  const [totalTeams, latestTeam, projectStats] = await Promise.all([
+export const getRegistrationMigrationSummary = asyncHandler(async (req, res) => {
+  const [
+    totalTeams,
+    approved,
+    pending,
+    rejected,
+    missingStatus,
+    pendingWithAssignedProject,
+    pendingWithCustomIdea
+  ] = await Promise.all([
     Team.countDocuments(),
-    Team.findOne().sort({ createdAt: -1 }).lean(),
-    getProjectStats()
+    Team.countDocuments({ registrationStatus: 'approved' }),
+    Team.countDocuments({ registrationStatus: 'pending' }),
+    Team.countDocuments({ registrationStatus: 'rejected' }),
+    Team.countDocuments({ registrationStatus: { $exists: false } }),
+    Team.countDocuments({
+      registrationStatus: 'pending',
+      'assignedProject.title': { $exists: true, $ne: '' }
+    }),
+    Team.countDocuments({
+      registrationStatus: 'pending',
+      'customProjectIdea.status': { $in: ['approved', 'pending'] }
+    })
   ])
 
   res.json({
     totalTeams,
-    latestTeam,
-    ...projectStats
+    approved,
+    pending,
+    rejected,
+    missingStatus,
+    pendingWithAssignedProject,
+    pendingWithCustomIdea
+  })
+})
+
+export const runRegistrationMigration = asyncHandler(async (req, res) => {
+  const mode = String(req.body?.mode || 'missing-only').trim().toLowerCase()
+  const targetStatus = String(req.body?.targetStatus || 'approved').trim().toLowerCase()
+  const reviewNote = String(req.body?.reviewNote || 'Bulk migration').trim()
+  const reviewedBy = String(req.admin?.username || 'admin')
+
+  if (!['approved', 'pending', 'rejected'].includes(targetStatus)) {
+    throw new ApiError(400, 'Invalid target status. Use approved, pending, or rejected')
+  }
+
+  let filter = { registrationStatus: { $exists: false } }
+
+  if (mode === 'pending-with-assigned') {
+    filter = {
+      registrationStatus: 'pending',
+      'assignedProject.title': { $exists: true, $ne: '' }
+    }
+  } else if (mode === 'pending-all') {
+    filter = { registrationStatus: 'pending' }
+  } else if (mode !== 'missing-only') {
+    throw new ApiError(400, 'Invalid migration mode')
+  }
+
+  const reviewedAt = new Date()
+  const update = {
+    $set: {
+      registrationStatus: targetStatus,
+      registrationReviewedAt: reviewedAt,
+      registrationReviewedBy: reviewedBy,
+      registrationReviewNote: reviewNote || 'Bulk migration'
+    }
+  }
+
+  const result = await Team.updateMany(filter, update)
+
+  const summary = await Team.countDocuments(publicApprovedTeamsQuery)
+
+  res.json({
+    message: 'Registration migration executed',
+    mode,
+    targetStatus,
+    matchedCount: result.matchedCount || 0,
+    modifiedCount: result.modifiedCount || 0,
+    approvedVisibleTeams: summary,
+    updatedFields: {
+      registrationStatus: targetStatus,
+      registrationReviewedAt: reviewedAt,
+      registrationReviewedBy: reviewedBy,
+      registrationReviewNote: reviewNote || 'Bulk migration'
+    }
+  })
+})
+
+export const getTeams = asyncHandler(async (req, res) => {
+  const teams = await Team.find(publicApprovedTeamsQuery).sort({ createdAt: -1 }).lean()
+  res.json(teams)
+})
+
+export const getDashboardStats = asyncHandler(async (req, res) => {
+  const [totalTeams, latestTeam] = await Promise.all([
+    Team.countDocuments(publicApprovedTeamsQuery),
+    Team.findOne(publicApprovedTeamsQuery).sort({ createdAt: -1 }).lean()
+  ])
+
+  res.json({
+    totalTeams,
+    latestTeam
   })
 })
 
@@ -977,6 +1162,8 @@ export const reviewCustomProjectIdeaRequest = asyncHandler(async (req, res) => {
   }
 
   if (action === 'approve') {
+    await upsertApprovedIdeaIntoProjectPool(customIdea)
+
     team.customProjectIdea.status = 'approved'
     team.assignedProject = {
       title: customIdea.title,

@@ -309,18 +309,47 @@ export function TeamDashboardPage() {
         </div>
 
         {activeTab === 'profile' ? (
-          <div className="rounded-2xl border border-white/20 bg-white/10 p-6 text-slate-100">
-            <h2 className="text-xl font-black">Assigned Project</h2>
-            {team.assignedProject?.title ? (
-              <div className="mt-3 space-y-2 text-sm text-cyan-50">
-                <p><strong>Title:</strong> {team.assignedProject.title}</p>
-                <p><strong>Description:</strong> {team.assignedProject.description || '-'}</p>
-                <p><strong>Difficulty:</strong> {team.assignedProject.difficulty || '-'}</p>
-                <p><strong>Domain:</strong> {team.assignedProject.domain || '-'}</p>
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-6 text-slate-100">
+              <h2 className="text-xl font-black">Assigned Project</h2>
+              {team.assignedProject?.title ? (
+                <div className="mt-3 space-y-2 text-sm text-cyan-50">
+                  <p><strong>Title:</strong> {team.assignedProject.title}</p>
+                  <p><strong>Description:</strong> {team.assignedProject.description || '-'}</p>
+                  <p><strong>Difficulty:</strong> {team.assignedProject.difficulty || '-'}</p>
+                  <p><strong>Domain:</strong> {team.assignedProject.domain || '-'}</p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-cyan-100">Project not assigned yet.</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-white/20 bg-white/10 p-6 text-slate-100">
+              <h2 className="text-xl font-black">Current Team Details</h2>
+              <div className="mt-3 grid gap-2 text-sm text-cyan-50 md:grid-cols-2">
+                <p><strong>Team Number:</strong> {team.teamNumber}</p>
+                <p><strong>Team Name:</strong> {team.teamName}</p>
+                <p><strong>Lead Name:</strong> {team.leadName}</p>
+                <p><strong>Lead Email:</strong> {team.leadEmail}</p>
+                <p><strong>Lead USN:</strong> {team.leadUsn}</p>
+                <p><strong>Lead Phone:</strong> {team.leadPhone}</p>
+                <p><strong>College:</strong> {team.college}</p>
+                <p><strong>Department:</strong> {team.department}</p>
               </div>
-            ) : (
-              <p className="mt-3 text-sm text-cyan-100">Project not assigned yet.</p>
-            )}
+
+              <div className="mt-4">
+                <h3 className="text-sm font-black uppercase tracking-wide text-cyan-100">Members</h3>
+                <div className="mt-2 space-y-2 text-sm text-cyan-50">
+                  {(team.members || []).map((member, index) => (
+                    <div key={`${member.usn || member.email || index}-profile`} className="rounded-lg border border-white/20 bg-black/20 p-2">
+                      <p><strong>Name:</strong> {member.name || '-'}</p>
+                      <p><strong>USN:</strong> {member.usn || '-'}</p>
+                      <p><strong>Email:</strong> {member.email || '-'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         ) : null}
 

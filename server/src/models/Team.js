@@ -214,6 +214,25 @@ const teamSchema = new mongoose.Schema(
       },
       submittedAt: Date
     },
+    githubRepoUrl: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    collaborationStatus: {
+      type: String,
+      enum: ['pending', 'collaborated'],
+      default: 'pending',
+      index: true
+    },
+    collaborationMarkedAt: {
+      type: Date,
+      default: null
+    },
+    collaborationMarkedBy: {
+      type: String,
+      default: ''
+    },
     passwordReset: {
       type: passwordResetSchema,
       default: () => ({})

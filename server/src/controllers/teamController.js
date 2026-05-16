@@ -120,6 +120,7 @@ export const uploadTeamCustomIdeaBulk = asyncHandler(async (req, res) => {
 })
 import { Team } from '../models/Team.js'
 import { Project } from '../models/Project.js'
+import { RegistrationLookup } from '../models/RegistrationLookup.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 import { getNextTeamNumber } from '../services/teamNumberService.js'
@@ -128,6 +129,7 @@ import { createDefaultTeamPassword, hashPassword } from '../utils/password.js'
 
 const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 const isPhone = (value) => /^\+?[0-9]{10,15}$/.test(value)
+const isGithubRepoUrl = (value) => /^https?:\/\/(www\.)?github\.com\/[^/\s]+\/[^/\s#?]+\/?$/i.test(value)
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const ALLOWED_DIFFICULTIES = new Set(['Easy', 'Medium', 'Hard'])
 
@@ -1074,6 +1076,71 @@ export const submitCustomProjectIdeaRequest = asyncHandler(async (req, res) => {
   })
 })
 
+export const submitTeamGithubRepository = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.team.teamId)
+  if (!team) {
+    throw new ApiError(404, 'Team not found')
+  }
+
+  const githubRepoUrl = String(req.body?.githubRepoUrl || '').trim()
+  if (!githubRepoUrl) {
+    throw new ApiError(400, 'GitHub repository URL is required')
+  }
+
+  if (!isGithubRepoUrl(githubRepoUrl)) {
+    throw new ApiError(400, 'Enter a valid GitHub repository URL')
+  }
+
+  const previousUrl = String(team.githubRepoUrl || '').trim()
+  team.githubRepoUrl = githubRepoUrl
+
+  if (!previousUrl || previousUrl.toLowerCase() !== githubRepoUrl.toLowerCase()) {
+    team.collaborationStatus = 'pending'
+    team.collaborationMarkedAt = null
+    team.collaborationMarkedBy = ''
+  }
+
+  await team.save()
+
+  res.json({
+    message: 'GitHub repository URL saved. Collaboration status is pending until admin confirms.',
+    team: toPlainTeam(team)
+  })
+})
+
+export const reviewTeamGithubCollaboration = asyncHandler(async (req, res) => {
+  const team = await Team.findById(req.params.teamId)
+  if (!team) {
+    throw new ApiError(404, 'Team not found')
+  }
+
+  const status = String(req.body?.status || '').trim().toLowerCase()
+  if (!['pending', 'collaborated'].includes(status)) {
+    throw new ApiError(400, 'Status must be pending or collaborated')
+  }
+
+  if (team.collaborationStatus === status) {
+    throw new ApiError(
+      400,
+      status === 'collaborated'
+        ? 'Team is already marked as collaborated. Ask team to resubmit URL to review again.'
+        : 'Team is already in pending collaboration state'
+    )
+  }
+
+  team.collaborationStatus = status
+  team.collaborationMarkedAt = new Date()
+  team.collaborationMarkedBy = String(req.admin?.username || 'admin')
+  await team.save()
+
+  res.json({
+    message: status === 'collaborated'
+      ? 'Team marked as collaborated'
+      : 'Team moved back to pending collaboration',
+    team: toPlainTeam(team)
+  })
+})
+
 export const reviewProfileUpdateRequest = asyncHandler(async (req, res) => {
   const team = await Team.findById(req.params.teamId)
   if (!team) {
@@ -1205,5 +1272,45 @@ export const reviewCustomProjectIdeaRequest = asyncHandler(async (req, res) => {
   res.json({
     message: 'Custom project idea rejected and random project assigned',
     team: toPlainTeam(team)
+  })
+})
+
+/**
+ * Bulk update College values for selected teams
+ */
+export const bulkUpdateTeams = asyncHandler(async (req, res) => {
+  const { teamIds, college } = req.body
+  const normalizedCollege = String(college || '').trim()
+
+  if (!teamIds || !Array.isArray(teamIds) || teamIds.length === 0) {
+    throw new ApiError(400, 'Team IDs are required and must be an array.')
+  }
+
+  if (!normalizedCollege) {
+    throw new ApiError(400, 'College value is required and must be a string.')
+  }
+
+  const allowedCollege = await RegistrationLookup.findOne({
+    type: 'college',
+    normalizedLabel: normalizedCollege.toLowerCase(),
+    active: true
+  })
+    .select({ label: 1 })
+    .lean()
+
+  if (!allowedCollege?.label) {
+    throw new ApiError(400, 'College must be selected from Directory values only.')
+  }
+
+  const updatedTeams = await Team.updateMany(
+    { _id: { $in: teamIds } },
+    { $set: { college: allowedCollege.label } },
+    { multi: true }
+  )
+
+  const modifiedCount = Number(updatedTeams?.modifiedCount || updatedTeams?.nModified || 0)
+
+  res.status(200).json({
+    message: `${modifiedCount} teams updated successfully.`
   })
 })

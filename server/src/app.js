@@ -5,6 +5,7 @@ import { env } from './config/env.js'
 import teamRoutes from './routes/teamRoutes.js'
 import projectRoutes from './routes/projectRoutes.js'
 import authRoutes from './routes/authRoutes.js'
+import lookupRoutes from './routes/lookupRoutes.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 import { createCorsOriginMatcher } from './utils/corsOrigin.js'
 
@@ -39,6 +40,7 @@ export const createApp = () => {
   app.use('/api/auth', authRoutes)
   app.use('/api/teams', teamRoutes)
   app.use('/api/projects', projectRoutes)
+  app.use('/api/lookups', lookupRoutes)
 
   app.use(notFound)
   app.use(errorHandler)

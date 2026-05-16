@@ -266,6 +266,26 @@ export const submitTeamCustomProjectIdeaRequest = async (payload, token) => {
   return data
 }
 
+export const submitTeamGithubRepository = async (payload, token) => {
+  const activeToken = token || getTeamToken()
+  const { data } = await api.post('/teams/team/github', payload, {
+    headers: {
+      Authorization: `Bearer ${activeToken}`
+    }
+  })
+
+  if (data?.team) {
+    setTeamSession({ token: activeToken, team: data.team })
+  }
+
+  return data
+}
+
+export const reviewTeamGithubCollaboration = async (teamId, payload) => {
+  const { data } = await api.post(`/teams/admin/${teamId}/github-collaboration/review`, payload)
+  return data
+}
+
 export const getAdminMe = async () => {
   const { data } = await api.get('/auth/me')
   return data
@@ -273,6 +293,31 @@ export const getAdminMe = async () => {
 
 export const registerTeam = async (payload) => {
   const { data } = await api.post('/teams/register', payload)
+  return data
+}
+
+export const getRegistrationLookups = async () => {
+  const { data } = await api.get('/lookups/registration-options')
+  return data
+}
+
+export const getAdminRegistrationLookups = async () => {
+  const { data } = await api.get('/lookups/admin/registration-options')
+  return data
+}
+
+export const createRegistrationLookup = async (type, payload) => {
+  const { data } = await api.post(`/lookups/admin/registration-options/${type}`, payload)
+  return data
+}
+
+export const updateRegistrationLookup = async (type, id, payload) => {
+  const { data } = await api.patch(`/lookups/admin/registration-options/${type}/${id}`, payload)
+  return data
+}
+
+export const deleteRegistrationLookup = async (type, id) => {
+  const { data } = await api.delete(`/lookups/admin/registration-options/${type}/${id}`)
   return data
 }
 
@@ -298,6 +343,11 @@ export const getRegistrationMigrationSummary = async () => {
 
 export const runRegistrationMigration = async (payload) => {
   const { data } = await api.post('/teams/admin/migration/registration', payload)
+  return data
+}
+
+export const bulkUpdateTeamsCollege = async (payload) => {
+  const { data } = await api.post('/teams/admin/teams/bulk-update', payload)
   return data
 }
 

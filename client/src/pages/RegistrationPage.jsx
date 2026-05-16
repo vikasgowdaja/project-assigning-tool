@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MemberFields } from '../components/MemberFields'
 import { PageShell } from '../components/PageShell'
-import { registerTeam } from '../services/api'
+import { getRegistrationLookups, registerTeam } from '../services/api'
 
 const initialForm = {
   teamName: '',
@@ -24,6 +24,9 @@ const initialCustomIdeaForm = {
 
 export function RegistrationPage() {
   const [form, setForm] = useState(initialForm)
+  const [lookupOptions, setLookupOptions] = useState({ colleges: [], departments: [] })
+  const [lookupLoading, setLookupLoading] = useState(true)
+  const [lookupError, setLookupError] = useState('')
   const [wantsCustomIdea, setWantsCustomIdea] = useState(false)
   const [customIdea, setCustomIdea] = useState(initialCustomIdeaForm)
   const [members, setMembers] = useState([
@@ -41,6 +44,37 @@ export function RegistrationPage() {
   const updateCustomIdeaField = (field, value) => {
     setCustomIdea((prev) => ({ ...prev, [field]: value }))
   }
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadLookups = async () => {
+      setLookupLoading(true)
+      setLookupError('')
+
+      try {
+        const data = await getRegistrationLookups()
+        if (cancelled) return
+        setLookupOptions({
+          colleges: Array.isArray(data?.colleges) ? data.colleges : [],
+          departments: Array.isArray(data?.departments) ? data.departments : []
+        })
+      } catch {
+        if (cancelled) return
+        setLookupError('Failed to load college and department options')
+      } finally {
+        if (!cancelled) {
+          setLookupLoading(false)
+        }
+      }
+    }
+
+    loadLookups()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const onSubmit = async (event) => {
     event.preventDefault()
@@ -99,9 +133,7 @@ export function RegistrationPage() {
               ['leadName', 'Team Lead Name'],
               ['leadEmail', 'Team Lead Email'],
               ['leadUsn', 'Team Lead USN'],
-              ['leadPhone', 'Team Lead Phone'],
-              ['college', 'College Name'],
-              ['department', 'Department']
+              ['leadPhone', 'Team Lead Phone']
             ].map(([key, label]) => (
               <div key={key}>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">
@@ -119,7 +151,49 @@ export function RegistrationPage() {
                 />
               </div>
             ))}
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">
+                College Name
+              </label>
+              <select
+                required
+                value={form.college}
+                onChange={(event) => updateField('college', event.target.value)}
+                disabled={lookupLoading}
+                className="w-full rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <option value="">{lookupLoading ? 'Loading colleges...' : 'Select college'}</option>
+                {lookupOptions.colleges.map((college) => (
+                  <option key={college} value={college}>{college}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-cyan-100">
+                Department
+              </label>
+              <select
+                required
+                value={form.department}
+                onChange={(event) => updateField('department', event.target.value)}
+                disabled={lookupLoading}
+                className="w-full rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <option value="">{lookupLoading ? 'Loading departments...' : 'Select department'}</option>
+                {lookupOptions.departments.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {lookupError ? (
+            <div className="rounded-lg border border-amber-300/60 bg-amber-500/20 px-3 py-2 text-sm text-amber-100">
+              {lookupError}
+            </div>
+          ) : null}
 
           <MemberFields members={members} setMembers={setMembers} />
 

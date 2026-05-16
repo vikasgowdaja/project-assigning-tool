@@ -7,9 +7,11 @@ import {
   clearTeamSession,
   getTeamMe,
   getTeamProfile,
+  getRegistrationLookups,
   getTeamToken,
   previewTeamCustomIdeaFile,
   recallTeamProfileUpdateRequest,
+  submitTeamGithubRepository,
   submitTeamCustomProjectIdeaRequest,
   submitTeamProfileUpdateRequest,
   uploadTeamCustomIdeaFile
@@ -17,6 +19,7 @@ import {
 
 const TABS = [
   { key: 'profile', label: 'Team Profile' },
+  { key: 'github', label: 'GitHub Collaboration' },
   { key: 'idea', label: 'New Project Idea' },
   { key: 'update', label: 'Student Details Change' },
   { key: 'password', label: 'Change Password' }
@@ -74,6 +77,9 @@ export function TeamDashboardPage() {
   const [profileRequestLoading, setProfileRequestLoading] = useState(false)
   const [profileRequestError, setProfileRequestError] = useState('')
   const [profileRequestMessage, setProfileRequestMessage] = useState('')
+  const [lookupOptions, setLookupOptions] = useState({ colleges: [], departments: [] })
+  const [lookupLoading, setLookupLoading] = useState(true)
+  const [lookupError, setLookupError] = useState('')
   const [showRecallDialog, setShowRecallDialog] = useState(false)
 
   const [ideaDraft, setIdeaDraft] = useState(initialIdeaDraft)
@@ -86,6 +92,10 @@ export function TeamDashboardPage() {
   const [ideaUploadError, setIdeaUploadError] = useState('')
   const [ideaUploadMessage, setIdeaUploadMessage] = useState('')
   const [ideaPreview, setIdeaPreview] = useState(null)
+  const [githubRepoUrl, setGithubRepoUrl] = useState(getTeamProfile()?.githubRepoUrl || '')
+  const [githubLoading, setGithubLoading] = useState(false)
+  const [githubError, setGithubError] = useState('')
+  const [githubMessage, setGithubMessage] = useState('')
 
   useEffect(() => {
     const token = getTeamToken()
@@ -100,6 +110,7 @@ export function TeamDashboardPage() {
       try {
         const response = await getTeamMe(token)
         setTeam(response.team)
+        setGithubRepoUrl(response.team.githubRepoUrl || '')
 
         const source = response.team.profileUpdateRequest?.status === 'pending'
           ? response.team.profileUpdateRequest?.payload
@@ -120,6 +131,37 @@ export function TeamDashboardPage() {
     }
 
     load()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadLookups = async () => {
+      setLookupLoading(true)
+      setLookupError('')
+
+      try {
+        const data = await getRegistrationLookups()
+        if (cancelled) return
+        setLookupOptions({
+          colleges: Array.isArray(data?.colleges) ? data.colleges : [],
+          departments: Array.isArray(data?.departments) ? data.departments : []
+        })
+      } catch {
+        if (cancelled) return
+        setLookupError('Failed to load college/department options')
+      } finally {
+        if (!cancelled) {
+          setLookupLoading(false)
+        }
+      }
+    }
+
+    loadLookups()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const updatePasswordField = (field, value) => {
@@ -259,7 +301,27 @@ export function TeamDashboardPage() {
     }
   }
 
+  const handleSubmitGithubRepository = async (event) => {
+    event.preventDefault()
+    setGithubLoading(true)
+    setGithubError('')
+    setGithubMessage('')
+
+    try {
+      const result = await submitTeamGithubRepository({ githubRepoUrl })
+      setTeam(result.team)
+      setGithubRepoUrl(result.team.githubRepoUrl || '')
+      setGithubMessage(result.message || 'GitHub URL saved')
+    } catch (requestError) {
+      setGithubError(requestError.response?.data?.message || 'Failed to save GitHub URL')
+    } finally {
+      setGithubLoading(false)
+    }
+  }
+
   const pendingProfileRequest = team?.profileUpdateRequest?.status === 'pending'
+  const pendingGithubReviewNeedsResubmission =
+    team?.collaborationStatus === 'pending' && Boolean(team?.collaborationMarkedBy)
 
   if (loading) {
     return (
@@ -351,6 +413,74 @@ export function TeamDashboardPage() {
               </div>
             </div>
           </div>
+        ) : null}
+
+        {activeTab === 'github' ? (
+          <form onSubmit={handleSubmitGithubRepository} className="rounded-2xl border border-white/20 bg-white/10 p-6 text-slate-100">
+            <h2 className="text-xl font-black">GitHub Collaboration</h2>
+            <p className="mt-1 text-sm text-cyan-100">
+              Add your repository URL. Status stays pending until admin confirms collaboration.
+            </p>
+
+            {pendingGithubReviewNeedsResubmission ? (
+              <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-900/30 px-3 py-2 text-sm text-amber-100">
+                Admin marked your GitHub collaboration as pending. Please resubmit your GitHub repository URL.
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <input
+                required
+                type="url"
+                value={githubRepoUrl}
+                onChange={(event) => setGithubRepoUrl(event.target.value)}
+                placeholder="https://github.com/org/repo"
+                className="md:col-span-2 rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100"
+              />
+              <button
+                type="submit"
+                disabled={githubLoading}
+                className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-black text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {githubLoading ? 'Saving...' : 'Save GitHub URL'}
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-white/20 bg-black/20 p-3 text-sm text-cyan-50">
+              <p>
+                <strong>Current Status:</strong>{' '}
+                {team.collaborationStatus === 'collaborated' ? 'Collaborated' : 'Pending'}
+              </p>
+              <p className="mt-1">
+                <strong>Last Reviewed By Admin:</strong> {team.collaborationMarkedBy || '-'}
+              </p>
+              {team.githubRepoUrl ? (
+                <p className="mt-1 break-all">
+                  <strong>Repository:</strong>{' '}
+                  <a
+                    href={team.githubRepoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-cyan-300 underline hover:text-cyan-200"
+                  >
+                    {team.githubRepoUrl}
+                  </a>
+                </p>
+              ) : null}
+            </div>
+
+            {githubError ? (
+              <div className="mt-3 rounded-lg border border-rose-300/40 bg-rose-900/30 px-3 py-2 text-sm text-rose-100">
+                {githubError}
+              </div>
+            ) : null}
+
+            {githubMessage ? (
+              <div className="mt-3 rounded-lg border border-emerald-300/40 bg-emerald-900/30 px-3 py-2 text-sm text-emerald-100">
+                {githubMessage}
+              </div>
+            ) : null}
+          </form>
         ) : null}
 
         {activeTab === 'idea' ? (
@@ -519,24 +649,40 @@ export function TeamDashboardPage() {
                 placeholder="Lead Phone"
                 className="rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100"
               />
-              <input
+              <select
                 required
                 value={profileDraft.department}
                 onChange={(event) => updateProfileDraftField('department', event.target.value)}
-                placeholder="Department"
-                className="rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100"
-              />
+                disabled={lookupLoading}
+                className="rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <option value="">{lookupLoading ? 'Loading departments...' : 'Select department'}</option>
+                {lookupOptions.departments.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
             </div>
 
             <div className="mt-4">
-              <input
+              <select
                 required
                 value={profileDraft.college}
                 onChange={(event) => updateProfileDraftField('college', event.target.value)}
-                placeholder="College"
-                className="w-full rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100"
-              />
+                disabled={lookupLoading}
+                className="w-full rounded-lg border border-white/30 bg-black/25 px-3 py-2 text-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <option value="">{lookupLoading ? 'Loading colleges...' : 'Select college'}</option>
+                {lookupOptions.colleges.map((college) => (
+                  <option key={college} value={college}>{college}</option>
+                ))}
+              </select>
             </div>
+
+            {lookupError ? (
+              <div className="mt-3 rounded-lg border border-amber-300/40 bg-amber-900/30 px-3 py-2 text-sm text-amber-100">
+                {lookupError}
+              </div>
+            ) : null}
 
             <div className="mt-4">
               <MemberFields members={profileMembers} setMembers={setProfileMembers} />

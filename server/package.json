@@ -35,5 +35,9 @@
     "nodemailer": "^7.0.5",
     "pdf-parse": "^2.4.5",
     "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2"
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  bulkUpdateTeamsCollege,
+  bulkUpdateTeamsField,
   getAdminRegistrationLookups,
   getAdminTeams
 } from '../services/api'
@@ -10,8 +10,9 @@ const PAGE_SIZE = 10
 const AdminBulkUpdateTeams = () => {
   const [teams, setTeams] = useState([])
   const [selectedTeams, setSelectedTeams] = useState([])
-  const [college, setCollege] = useState('')
-  const [collegeOptions, setCollegeOptions] = useState([])
+  const [targetField, setTargetField] = useState('college')
+  const [targetValue, setTargetValue] = useState('')
+  const [directoryOptions, setDirectoryOptions] = useState({ college: [], department: [] })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -37,15 +38,19 @@ const AdminBulkUpdateTeams = () => {
               .map((item) => String(item?.label || '').trim())
               .filter(Boolean)
           : []
+        const lookupDepartments = Array.isArray(lookupResponse?.departments)
+          ? lookupResponse.departments
+              .filter((item) => item?.active)
+              .map((item) => String(item?.label || '').trim())
+              .filter(Boolean)
+          : []
 
-        const uniqueOptions = Array.from(new Set(lookupColleges)).sort((a, b) => a.localeCompare(b))
-
-        setCollegeOptions(uniqueOptions)
-        if (uniqueOptions.length > 0) {
-          setCollege((prev) => prev || uniqueOptions[0])
-        } else {
-          setCollege('')
+        const normalizedOptions = {
+          college: Array.from(new Set(lookupColleges)).sort((a, b) => a.localeCompare(b)),
+          department: Array.from(new Set(lookupDepartments)).sort((a, b) => a.localeCompare(b))
         }
+
+        setDirectoryOptions(normalizedOptions)
       } catch (error) {
         setError('Failed to load teams or college options')
         console.error('Error fetching teams:', error)
@@ -65,7 +70,11 @@ const AdminBulkUpdateTeams = () => {
     return teams.slice(start, start + PAGE_SIZE)
   }, [teams, safePage])
 
-  const effectiveCollege = college.trim()
+  const activeOptions = directoryOptions[targetField] || []
+  const selectedDirectoryValue = activeOptions.includes(targetValue)
+    ? targetValue
+    : activeOptions[0] || ''
+  const effectiveValue = selectedDirectoryValue.trim()
 
   const selectedSet = useMemo(() => new Set(selectedTeams), [selectedTeams])
   const allOnPageSelected =
@@ -98,8 +107,8 @@ const AdminBulkUpdateTeams = () => {
   }
 
   const runBulkUpdate = async (teamIds) => {
-    if (!effectiveCollege) {
-      setError('Please choose a college value from Directory')
+    if (!effectiveValue) {
+      setError(`Please choose a ${targetField} value from Directory`)
       return
     }
 
@@ -113,9 +122,10 @@ const AdminBulkUpdateTeams = () => {
     setMessage('')
 
     try {
-      const response = await bulkUpdateTeamsCollege({
+      const response = await bulkUpdateTeamsField({
         teamIds,
-        college: effectiveCollege
+        field: targetField,
+        value: effectiveValue
       })
 
       setMessage(response.message || 'Bulk update completed successfully')
@@ -153,7 +163,7 @@ const AdminBulkUpdateTeams = () => {
     <section className="rounded-2xl border border-teal-300/30 bg-teal-900/20 p-4">
       <h2 className="text-lg font-black text-teal-100">Bulk Update Teams</h2>
       <p className="mt-1 text-xs text-teal-100/90">
-        Select records by checkbox and choose the target college value from Directory.
+        Select records by checkbox and choose the target college or department value from Directory.
       </p>
 
       {error ? (
@@ -170,19 +180,36 @@ const AdminBulkUpdateTeams = () => {
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="md:col-span-2">
-          <label htmlFor="college-select" className="mb-1 block text-xs font-bold text-teal-100/90">
-            New College Value
+          <label htmlFor="target-field" className="mb-1 block text-xs font-bold text-teal-100/90">
+            Field To Update
           </label>
           <select
-            id="college-select"
-            value={college}
-            onChange={(event) => setCollege(event.target.value)}
+            id="target-field"
+            value={targetField}
+            onChange={(event) => setTargetField(event.target.value)}
+            className="w-full rounded-lg border border-teal-200/40 bg-slate-950/40 px-3 py-2 text-sm text-white outline-none ring-0"
+          >
+            <option value="college">College</option>
+            <option value="department">Department</option>
+          </select>
+        </div>
+
+        <div className="md:col-span-2">
+          <label htmlFor="target-value" className="mb-1 block text-xs font-bold text-teal-100/90">
+            New {targetField === 'college' ? 'College' : 'Department'} Value
+          </label>
+          <select
+            id="target-value"
+            value={selectedDirectoryValue}
+            onChange={(event) => setTargetValue(event.target.value)}
             className="w-full rounded-lg border border-teal-200/40 bg-slate-950/40 px-3 py-2 text-sm text-white outline-none ring-0"
           >
             <option value="" disabled>
-              {collegeOptions.length > 0 ? 'Select college from directory' : 'No directory colleges available'}
+              {activeOptions.length > 0
+                ? `Select ${targetField} from directory`
+                : `No directory ${targetField} values available`}
             </option>
-            {collegeOptions.map((option) => (
+            {activeOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -194,7 +221,7 @@ const AdminBulkUpdateTeams = () => {
           <button
             type="button"
             onClick={handleUpdateSelected}
-            disabled={submitting || collegeOptions.length === 0}
+            disabled={submitting || activeOptions.length === 0}
             className="rounded-lg border border-cyan-300/50 bg-cyan-500/20 px-3 py-2 text-xs font-bold text-cyan-100 disabled:opacity-50"
           >
             {submitting ? 'Updating...' : 'Update Selected'}
@@ -202,7 +229,7 @@ const AdminBulkUpdateTeams = () => {
           <button
             type="button"
             onClick={handleUpdateAll}
-            disabled={submitting || teams.length === 0 || collegeOptions.length === 0}
+            disabled={submitting || teams.length === 0 || activeOptions.length === 0}
             className="rounded-lg border border-amber-300/50 bg-amber-500/20 px-3 py-2 text-xs font-bold text-amber-100 disabled:opacity-50"
           >
             {submitting ? 'Updating...' : 'Update All Records'}
@@ -218,7 +245,7 @@ const AdminBulkUpdateTeams = () => {
                 <input type="checkbox" onChange={handleSelectAll} checked={allOnPageSelected} />
               </th>
               <th className="px-3 py-2">Team Name</th>
-              <th className="px-3 py-2">Current College</th>
+              <th className="px-3 py-2">Current {targetField === 'college' ? 'College' : 'Department'}</th>
             </tr>
           </thead>
           <tbody>
@@ -232,7 +259,9 @@ const AdminBulkUpdateTeams = () => {
                   />
                 </td>
                 <td className="px-3 py-2">{team.teamName || team.name || '-'}</td>
-                <td className="px-3 py-2">{team.college || '-'}</td>
+                <td className="px-3 py-2">
+                  {targetField === 'college' ? team.college || '-' : team.department || '-'}
+                </td>
               </tr>
             ))}
           </tbody>

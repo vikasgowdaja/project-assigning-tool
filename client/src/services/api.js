@@ -346,9 +346,17 @@ export const runRegistrationMigration = async (payload) => {
   return data
 }
 
-export const bulkUpdateTeamsCollege = async (payload) => {
+export const bulkUpdateTeamsField = async (payload) => {
   const { data } = await api.post('/teams/admin/teams/bulk-update', payload)
   return data
+}
+
+export const bulkUpdateTeamsCollege = async (payload) => {
+  return bulkUpdateTeamsField({
+    ...payload,
+    field: 'college',
+    value: payload?.value || payload?.college || ''
+  })
 }
 
 export const getStats = async () => {

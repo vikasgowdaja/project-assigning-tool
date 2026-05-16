@@ -28,6 +28,7 @@ import { AdminRevokeSection } from '../components/admin/AdminRevokeSection'
 import { PageShell } from '../components/PageShell'
 import { ActionDialog } from '../components/ActionDialog'
 import AdminBulkUpdateTeams from '../components/AdminBulkUpdateTeams'
+import { ExcelExportDialog } from '../components/ExcelExportDialog'
 
 const PAGE_SIZE = 8
 const FLOW_TABS = {
@@ -145,6 +146,8 @@ const AdminTeamsPage = () => {
     targetStatus: 'approved',
     reviewNote: 'Admin bulk migration'
   })
+  const [showExportDialog, setShowExportDialog] = useState(false)
+
   const [dialogConfig, setDialogConfig] = useState({
     isOpen: false,
     title: '',
@@ -551,17 +554,26 @@ const AdminTeamsPage = () => {
               Edit team details and member records without creating duplicate entries.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              fetchTeams({ showLoader: true })
-              fetchProjects()
-              fetchLookupCatalog()
-            }}
-            className="rounded-lg border border-cyan-200/60 bg-cyan-100/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-100/20"
-          >
-            Refresh
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowExportDialog(true)}
+              className="rounded-lg border border-emerald-300/50 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-600/40"
+            >
+              Export Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                fetchTeams({ showLoader: true })
+                fetchProjects()
+                fetchLookupCatalog()
+              }}
+              className="rounded-lg border border-cyan-200/60 bg-cyan-100/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-100/20"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -717,6 +729,12 @@ const AdminTeamsPage = () => {
           onConfirm={handleDialogConfirm}
         />
       </section>
+
+      <ExcelExportDialog
+        isOpen={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        teams={teams}
+      />
     </PageShell>
   )
 }

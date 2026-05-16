@@ -1279,38 +1279,48 @@ export const reviewCustomProjectIdeaRequest = asyncHandler(async (req, res) => {
  * Bulk update College values for selected teams
  */
 export const bulkUpdateTeams = asyncHandler(async (req, res) => {
-  const { teamIds, college } = req.body
-  const normalizedCollege = String(college || '').trim()
+  const { teamIds, field, value, college, department } = req.body
+
+  const normalizedField = String(field || '').trim().toLowerCase()
+  const targetField = normalizedField || (String(department || '').trim() ? 'department' : 'college')
+  const allowedFields = new Set(['college', 'department'])
+
+  if (!allowedFields.has(targetField)) {
+    throw new ApiError(400, 'Field must be either college or department.')
+  }
+
+  const rawValue = value || (targetField === 'department' ? department : college)
+  const normalizedValue = String(rawValue || '').trim()
 
   if (!teamIds || !Array.isArray(teamIds) || teamIds.length === 0) {
     throw new ApiError(400, 'Team IDs are required and must be an array.')
   }
 
-  if (!normalizedCollege) {
-    throw new ApiError(400, 'College value is required and must be a string.')
+  if (!normalizedValue) {
+    throw new ApiError(400, `${targetField} value is required and must be a string.`)
   }
 
-  const allowedCollege = await RegistrationLookup.findOne({
-    type: 'college',
-    normalizedLabel: normalizedCollege.toLowerCase(),
+  const allowedValue = await RegistrationLookup.findOne({
+    type: targetField,
+    normalizedLabel: normalizedValue.toLowerCase(),
     active: true
   })
     .select({ label: 1 })
     .lean()
 
-  if (!allowedCollege?.label) {
-    throw new ApiError(400, 'College must be selected from Directory values only.')
+  if (!allowedValue?.label) {
+    throw new ApiError(400, `${targetField} must be selected from Directory values only.`)
   }
 
   const updatedTeams = await Team.updateMany(
     { _id: { $in: teamIds } },
-    { $set: { college: allowedCollege.label } },
+    { $set: { [targetField]: allowedValue.label } },
     { multi: true }
   )
 
   const modifiedCount = Number(updatedTeams?.modifiedCount || updatedTeams?.nModified || 0)
 
   res.status(200).json({
-    message: `${modifiedCount} teams updated successfully.`
+    message: `${modifiedCount} teams updated successfully for ${targetField}.`
   })
 })
